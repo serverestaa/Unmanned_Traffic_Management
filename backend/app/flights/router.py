@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from geoalchemy2.functions import ST_GeomFromText
+from datetime import datetime
+from ..utils.logger import setup_logger
 
 from ..database import get_db
 from ..auth.utils import get_current_active_user
@@ -18,6 +20,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/flights", tags=["Flights"])
+logger = setup_logger("utm.flights")
 
 
 @router.post("/restricted-zones/", response_model=RestrictedZoneSchema)
@@ -54,7 +57,6 @@ async def get_restricted_zones(
 @router.post("/check-conflicts/", response_model=ConflictCheck)
 async def check_route_conflicts(
         waypoints: List[dict],  # [{"latitude": float, "longitude": float, "altitude": float}]
-        max_altitude: float,
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
@@ -267,3 +269,75 @@ async def update_flight_request_status(
     await db.commit()
     await db.refresh(flight_request)
     return flight_request
+
+
+@router.delete("/restricted-zones/{zone_id}/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_restricted_zone(
+        zone_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """
+    Delete a restricted zone. Only admins can delete zones.
+    """
+    # Only admins can delete restricted zones
+    if current_user.role != "admin":
+        logger.warning(f"Non-admin user {current_user.email} attempted to delete restricted zone {zone_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
+    # Get the zone
+    result = await db.execute(
+        select(RestrictedZone).filter(RestrictedZone.id == zone_id)
+    )
+    zone = result.scalar_one_or_none()
+    
+    if not zone:
+        logger.warning(f"Attempted to delete non-existent restricted zone {zone_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Restricted zone not found"
+        )
+
+    # Check if there are any active flight requests that intersect with this zone
+    current_time = datetime.utcnow()
+    result = await db.execute(
+        select(FlightRequest).filter(
+            and_(
+                FlightRequest.status.in_(["approved", "active"]),
+                FlightRequest.planned_end_time > current_time
+            )
+        )
+    )
+    active_flights = result.scalars().all()
+
+    for flight in active_flights:
+        # Get waypoints for the flight
+        waypoints_result = await db.execute(
+            select(Waypoint)
+            .filter(Waypoint.flight_request_id == flight.id)
+            .order_by(Waypoint.sequence)
+        )
+        waypoints = waypoints_result.scalars().all()
+        route_points = [(wp.latitude, wp.longitude) for wp in waypoints]
+
+        if route_intersects_zone(route_points, zone.center_lat, zone.center_lng, zone.radius):
+            logger.warning(f"Cannot delete zone {zone_id} as it intersects with active flight {flight.id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete zone as it intersects with active flight request {flight.id}"
+            )
+
+    # Delete the zone
+    try:
+        await db.delete(zone)
+        await db.commit()
+        logger.info(f"Restricted zone {zone_id} deleted by admin {current_user.email}")
+    except Exception as e:
+        logger.error(f"Error deleting restricted zone {zone_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting restricted zone"
+        )
