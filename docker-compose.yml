@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    build:
+      context: ./database_service
+    environment:
+      POSTGRES_DB: utm_db
+      POSTGRES_USER: utm_user
+      POSTGRES_PASSWORD: utm_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U utm_user -d utm_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://utm_user:utm_password@db:5432/utm_db
+    ports:
+      - "8010:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data: 
