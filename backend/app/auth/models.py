@@ -19,4 +19,5 @@ class User(Base):
 
     # Relationships
     drones = relationship("Drone", back_populates="owner")
-    flight_requests = relationship("FlightRequest", back_populates="pilot")
+    flight_requests = relationship("FlightRequest", back_populates="pilot", foreign_keys="[FlightRequest.pilot_id]")
+    approved_flights = relationship("FlightRequest", back_populates="approver", foreign_keys="[FlightRequest.approved_by]")

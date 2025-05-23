@@ -48,7 +48,7 @@ class FlightRequest(Base):
     # Relationships
     drone = relationship("Drone", back_populates="flight_requests")
     pilot = relationship("User", back_populates="flight_requests", foreign_keys=[pilot_id])
-    approver = relationship("User", foreign_keys=[approved_by])
+    approver = relationship("User", back_populates="approved_flights", foreign_keys=[approved_by])
 
 
 class Waypoint(Base):

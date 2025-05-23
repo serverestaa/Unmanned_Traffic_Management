@@ -7,8 +7,9 @@ RUN apt-get update \
         postgresql-15-postgis-3-scripts \
     && rm -rf /var/lib/apt/lists/*
 
-# Create initialization script
-COPY ./init-postgis.sh /docker-entrypoint-initdb.d/01-init-postgis.sh
+# Copy initialization scripts
+COPY ./init_scripts/01-init-postgis.sh /docker-entrypoint-initdb.d/01-init-postgis.sh
+COPY ./init_scripts/02-create-extensions.sql /docker-entrypoint-initdb.d/02-create-extensions.sql
 RUN chmod +x /docker-entrypoint-initdb.d/01-init-postgis.sh
 
 # Set default environment variables
