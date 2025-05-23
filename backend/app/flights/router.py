@@ -1,0 +1,269 @@
+# app/flights/router.py
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
+from geoalchemy2.functions import ST_GeomFromText
+
+from ..database import get_db
+from ..auth.utils import get_current_active_user
+from ..auth.models import User
+from ..drones.models import Drone
+from ..utils.geospatial import route_intersects_zone, create_linestring_from_waypoints
+from .models import FlightRequest, RestrictedZone, Waypoint
+from .schemas import (
+    FlightRequestCreate, FlightRequestUpdate, FlightRequest as FlightRequestSchema,
+    FlightRequestWithDetails, RestrictedZoneCreate, RestrictedZone as RestrictedZoneSchema,
+    ConflictCheck
+)
+
+router = APIRouter(prefix="/flights", tags=["Flights"])
+
+
+@router.post("/restricted-zones/", response_model=RestrictedZoneSchema)
+async def create_restricted_zone(
+        zone: RestrictedZoneCreate,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    # Only admins can create restricted zones
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
+    db_zone = RestrictedZone(**zone.dict())
+    db.add(db_zone)
+    await db.commit()
+    await db.refresh(db_zone)
+    return db_zone
+
+
+@router.get("/restricted-zones/", response_model=List[RestrictedZoneSchema])
+async def get_restricted_zones(
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    result = await db.execute(
+        select(RestrictedZone).filter(RestrictedZone.is_active == True)
+    )
+    return result.scalars().all()
+
+
+@router.post("/check-conflicts/", response_model=ConflictCheck)
+async def check_route_conflicts(
+        waypoints: List[dict],  # [{"latitude": float, "longitude": float, "altitude": float}]
+        max_altitude: float,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    conflicts = []
+    conflicting_zones = []
+
+    # Get all active restricted zones
+    result = await db.execute(
+        select(RestrictedZone).filter(RestrictedZone.is_active == True)
+    )
+    restricted_zones = result.scalars().all()
+
+    # Convert waypoints to coordinate tuples
+    route_points = [(wp["latitude"], wp["longitude"]) for wp in waypoints]
+
+    for zone in restricted_zones:
+        # Check if route intersects with restricted zone
+        if route_intersects_zone(route_points, zone.center_lat, zone.center_lng, zone.radius):
+            conflicts.append(f"Route intersects with restricted zone: {zone.name}")
+            conflicting_zones.append(zone)
+
+        # Check altitude conflicts for waypoints in zone
+        for wp in waypoints:
+            if (wp["altitude"] > zone.max_altitude and
+                    route_intersects_zone([(wp["latitude"], wp["longitude"])],
+                                          zone.center_lat, zone.center_lng, zone.radius)):
+                conflicts.append(
+                    f"Altitude {wp['altitude']}m exceeds limit {zone.max_altitude}m in zone: {zone.name}"
+                )
+
+    return ConflictCheck(
+        has_conflicts=len(conflicts) > 0,
+        conflicts=conflicts,
+        restricted_zones=conflicting_zones
+    )
+
+
+@router.post("/requests/", response_model=FlightRequestSchema)
+async def create_flight_request(
+        flight_request: FlightRequestCreate,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    # Verify drone ownership
+    result = await db.execute(
+        select(Drone).filter(
+            and_(Drone.id == flight_request.drone_id, Drone.owner_id == current_user.id)
+        )
+    )
+    drone = result.scalar_one_or_none()
+    if not drone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Drone not found or not owned by user"
+        )
+
+    # Check for conflicts
+    waypoints_data = [
+        {"latitude": wp.latitude, "longitude": wp.longitude, "altitude": wp.altitude}
+        for wp in flight_request.waypoints
+    ]
+    conflicts = await check_route_conflicts(waypoints_data, flight_request.max_altitude, db, current_user)
+
+    if conflicts.has_conflicts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Route conflicts detected: {'; '.join(conflicts.conflicts)}"
+        )
+
+    # Create flight request
+    route_points = [(wp.latitude, wp.longitude) for wp in flight_request.waypoints]
+    route_wkt = create_linestring_from_waypoints(route_points)
+
+    db_flight_request = FlightRequest(
+        drone_id=flight_request.drone_id,
+        pilot_id=current_user.id,
+        planned_start_time=flight_request.planned_start_time,
+        planned_end_time=flight_request.planned_end_time,
+        max_altitude=flight_request.max_altitude,
+        purpose=flight_request.purpose,
+        route=ST_GeomFromText(route_wkt, 4326)
+    )
+    db.add(db_flight_request)
+    await db.flush()  # Get the ID
+
+    # Create waypoints
+    for wp in flight_request.waypoints:
+        db_waypoint = Waypoint(
+            flight_request_id=db_flight_request.id,
+            sequence=wp.sequence,
+            latitude=wp.latitude,
+            longitude=wp.longitude,
+            altitude=wp.altitude
+        )
+        db.add(db_waypoint)
+
+    await db.commit()
+    await db.refresh(db_flight_request)
+    return db_flight_request
+
+
+@router.get("/requests/", response_model=List[FlightRequestSchema])
+async def get_my_flight_requests(
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    result = await db.execute(
+        select(FlightRequest).filter(FlightRequest.pilot_id == current_user.id)
+    )
+    return result.scalars().all()
+
+
+@router.get("/requests/all/", response_model=List[FlightRequestSchema])
+async def get_all_flight_requests(
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    # Only admins can see all flight requests
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
+    result = await db.execute(select(FlightRequest))
+    return result.scalars().all()
+
+
+@router.get("/requests/{request_id}/", response_model=FlightRequestWithDetails)
+async def get_flight_request(
+        request_id: int,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    result = await db.execute(
+        select(FlightRequest).filter(FlightRequest.id == request_id)
+    )
+    flight_request = result.scalar_one_or_none()
+    if not flight_request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Flight request not found"
+        )
+
+    # Check permissions
+    if flight_request.pilot_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
+    # Get waypoints
+    waypoints_result = await db.execute(
+        select(Waypoint)
+        .filter(Waypoint.flight_request_id == request_id)
+        .order_by(Waypoint.sequence)
+    )
+    waypoints = waypoints_result.scalars().all()
+
+    # Get drone and pilot info
+    drone_result = await db.execute(select(Drone).filter(Drone.id == flight_request.drone_id))
+    drone = drone_result.scalar_one()
+
+    pilot_result = await db.execute(select(User).filter(User.id == flight_request.pilot_id))
+    pilot = pilot_result.scalar_one()
+
+    return FlightRequestWithDetails(
+        **flight_request.__dict__,
+        waypoints=waypoints,
+        drone={"id": drone.id, "brand": drone.brand, "model": drone.model, "serial_number": drone.serial_number},
+        pilot={"id": pilot.id, "full_name": pilot.full_name, "email": pilot.email}
+    )
+
+
+@router.put("/requests/{request_id}/", response_model=FlightRequestSchema)
+async def update_flight_request_status(
+        request_id: int,
+        update_data: FlightRequestUpdate,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    result = await db.execute(
+        select(FlightRequest).filter(FlightRequest.id == request_id)
+    )
+    flight_request = result.scalar_one_or_none()
+    if not flight_request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Flight request not found"
+        )
+
+    # Only admins can approve/reject requests
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
+    # Update request
+    if update_data.status:
+        flight_request.status = update_data.status
+        if update_data.status in ["approved", "rejected"]:
+            from datetime import datetime
+            flight_request.approved_at = datetime.utcnow()
+            flight_request.approved_by = current_user.id
+
+    if update_data.approval_notes:
+        flight_request.approval_notes = update_data.approval_notes
+
+    await db.commit()
+    await db.refresh(flight_request)
+    return flight_request
