@@ -2,6 +2,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+import uuid
 
 
 class DroneBase(BaseModel):
@@ -29,7 +30,7 @@ class DroneUpdate(BaseModel):
 class Drone(DroneBase):
     id: int
     is_active: bool
-    owner_id: int
+    owner_id: uuid.UUID
     created_at: datetime
 
     class Config:
