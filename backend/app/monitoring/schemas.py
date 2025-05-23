@@ -2,6 +2,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+import uuid
 
 
 class TelemetryDataBase(BaseModel):
@@ -47,7 +48,7 @@ class Alert(AlertBase):
     id: int
     is_resolved: bool
     resolved_at: Optional[datetime] = None
-    resolved_by: Optional[int] = None
+    resolved_by: Optional[uuid.UUID] = None
     created_at: datetime
 
     class Config:

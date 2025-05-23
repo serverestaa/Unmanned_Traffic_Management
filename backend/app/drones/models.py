@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boo
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
+from sqlalchemy.dialects.postgresql import UUID
 
 
 class Drone(Base):
@@ -16,7 +17,7 @@ class Drone(Base):
     max_speed = Column(Float, default=15.0)  # m/s
     weight = Column(Float)  # kg
     is_active = Column(Boolean, default=True)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

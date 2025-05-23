@@ -2,6 +2,7 @@
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
+import uuid
 
 
 class WaypointBase(BaseModel):
@@ -64,10 +65,10 @@ class FlightRequestUpdate(BaseModel):
 
 class FlightRequest(FlightRequestBase):
     id: int
-    pilot_id: int
+    pilot_id: uuid.UUID
     status: str
     approval_notes: Optional[str] = None
-    approved_by: Optional[int] = None
+    approved_by: Optional[uuid.UUID] = None
     created_at: datetime
     approved_at: Optional[datetime] = None
 

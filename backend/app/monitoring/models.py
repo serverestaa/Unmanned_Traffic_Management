@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import UUID
 from ..database import Base
 
 
@@ -53,7 +54,7 @@ class Alert(Base):
     # Status
     is_resolved = Column(Boolean, default=False)
     resolved_at = Column(DateTime(timezone=True))
-    resolved_by = Column(Integer, ForeignKey("users.id"))
+    resolved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

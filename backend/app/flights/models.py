@@ -2,6 +2,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import UUID
 from geoalchemy2 import Geography, Geometry
 from ..database import Base
 
@@ -25,7 +26,7 @@ class FlightRequest(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     drone_id = Column(Integer, ForeignKey("drones.id"), nullable=False)
-    pilot_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    pilot_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # Flight details
     planned_start_time = Column(DateTime(timezone=True), nullable=False)
@@ -39,7 +40,7 @@ class FlightRequest(Base):
     # Status
     status = Column(String, default="pending")  # pending, approved, rejected, active, completed
     approval_notes = Column(Text)
-    approved_by = Column(Integer, ForeignKey("users.id"))
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
