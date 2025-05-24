@@ -3,9 +3,13 @@ import {
   GoogleMap,
   DrawingManager,
   Polygon,
+  Circle,                        
   useJsApiLoader,
 } from '@react-google-maps/api';
 import { useCallback, useRef, useState } from 'react';
+import {
+  useGetRestrictedZonesQuery,     
+} from '@/api/flights';
 
 const center = { lat: 51.1605, lng: 71.4704 };
 
@@ -14,6 +18,8 @@ export default function MapWithDraw() {
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
     libraries: ['drawing'],
   });
+
+  const { data: zones = [] } = useGetRestrictedZonesQuery();
 
   const [polys, setPolys] = useState<{ id: string; path: google.maps.LatLngLiteral[] }[]>([]);
   const nextId = useRef(0);
@@ -28,7 +34,7 @@ export default function MapWithDraw() {
   }, []);
 
   if (loadError) return <p className="text-red-500">Map failed to load</p>;
-  if (!isLoaded)   return <p>Loading map…</p>;
+  if (!isLoaded) return <p>Loading map…</p>;
 
   return (
     <GoogleMap
@@ -41,6 +47,20 @@ export default function MapWithDraw() {
         streetViewControl: false,
       }}
     >
+      {zones.map((z) => (
+        <Circle
+          key={z.id}
+          center={{ lat: z.center_lat, lng: z.center_lng }}
+          radius={z.radius}                 
+          options={{
+            fillColor: '#FF5252',
+            fillOpacity: 0.25,
+            strokeColor: '#FF5252',
+            strokeWeight: 2,
+            clickable: false,
+          }}
+        />
+      ))}
       {polys.map((poly) => (
         <Polygon
           key={poly.id}
