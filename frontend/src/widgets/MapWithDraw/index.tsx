@@ -3,9 +3,14 @@ import {
   GoogleMap,
   DrawingManager,
   Polygon,
+  Circle,                           // ← NEW
   useJsApiLoader,
 } from '@react-google-maps/api';
 import { useCallback, useRef, useState } from 'react';
+import {
+  useGetRestrictedZonesQuery,      // ← NEW
+  RestrictedZone,
+} from '@/api/flights';
 
 const center = { lat: 51.1605, lng: 71.4704 };
 
@@ -15,6 +20,10 @@ export default function MapWithDraw() {
     libraries: ['drawing'],
   });
 
+  /* --------- fetch restricted zones from server --------- */
+  const { data: zones = [] } = useGetRestrictedZonesQuery();
+
+  /* --------- user-drawn polygons --------- */
   const [polys, setPolys] = useState<{ id: string; path: google.maps.LatLngLiteral[] }[]>([]);
   const nextId = useRef(0);
 
@@ -28,7 +37,7 @@ export default function MapWithDraw() {
   }, []);
 
   if (loadError) return <p className="text-red-500">Map failed to load</p>;
-  if (!isLoaded)   return <p>Loading map…</p>;
+  if (!isLoaded) return <p>Loading map…</p>;
 
   return (
     <GoogleMap
@@ -41,6 +50,23 @@ export default function MapWithDraw() {
         streetViewControl: false,
       }}
     >
+      {/* server-side restricted zones */}
+      {zones.map((z) => (
+        <Circle
+          key={z.id}
+          center={{ lat: z.center_lat, lng: z.center_lng }}
+          radius={z.radius}                 // metres
+          options={{
+            fillColor: '#FF5252',
+            fillOpacity: 0.25,
+            strokeColor: '#FF5252',
+            strokeWeight: 2,
+            clickable: false,
+          }}
+        />
+      ))}
+
+      {/* user-drawn polygons */}
       {polys.map((poly) => (
         <Polygon
           key={poly.id}
