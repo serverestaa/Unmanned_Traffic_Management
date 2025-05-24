@@ -18,8 +18,7 @@ COPY . .
 
 # Create alembic directory if it doesn't exist
 RUN mkdir -p alembic/versions
-RUN python scripts/populate_hex_grid.py
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/start.sh"]

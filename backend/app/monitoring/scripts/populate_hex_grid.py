@@ -7,9 +7,13 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.monitoring.models import HexGridCell
 from geoalchemy2.shape import from_shape
+from fastapi import APIRouter
+
+router = APIRouter()    
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
+@router.get("/populate-hex-grid")
 async def populate_hex_grid():
     async with AsyncSessionLocal() as db:
         existing = (await db.execute(select(HexGridCell))).scalars().all()
@@ -73,6 +77,3 @@ async def populate_hex_grid():
             print(f"Inserted {len(cells)} hex cells")
 
         print("Finished populating hex grid")
-
-if __name__ == "__main__":
-    asyncio.run(populate_hex_grid())
