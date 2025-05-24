@@ -45,8 +45,7 @@ async def create_restricted_zone(
 
 @router.get("/restricted-zones", response_model=List[RestrictedZoneSchema])
 async def get_restricted_zones(
-        db: AsyncSession = Depends(get_db),
-        current_user: User = Depends(get_current_active_user)
+        db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
         select(RestrictedZone).filter(RestrictedZone.is_active == True)
