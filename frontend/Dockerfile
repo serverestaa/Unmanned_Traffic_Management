@@ -1,19 +1,27 @@
-FROM node:20-alpine
+
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+
+RUN npm ci
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
-
-# Install dependencies
-RUN npm ci
-
-# Copy source code
 COPY . .
-
-# Build the application
+COPY --from=deps /app/node_modules ./node_modules
 RUN npm run build
 
-EXPOSE 3000
+FROM node:20-alpine AS runner
+ENV NODE_ENV=production
 
+WORKDIR /app
+
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+EXPOSE 3000
 CMD ["npm", "start"]
