@@ -1,9 +1,8 @@
+import { OnlineMap } from "@/views/onlinemap";
 
 
 export default function Home() {
   return (
-    <main className="w-full">
-
-    </main>    
+  <OnlineMap />    
   );
 }
