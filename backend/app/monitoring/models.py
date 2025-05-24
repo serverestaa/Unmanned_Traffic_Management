@@ -3,7 +3,55 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boo
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
+from geoalchemy2 import Geometry
 from ..database import Base
+from ..drones.models import Drone
+from ..auth.models import User
+from ..flights.models import FlightRequest
+
+
+class HexGridCell(Base):
+    __tablename__ = "hex_grid_cells"
+
+    id = Column(Integer, primary_key=True, index=True)
+    h3_index = Column(String, unique=True, index=True, nullable=False)  # H3 index at resolution 8
+    center_lat = Column(Float, nullable=False)
+    center_lng = Column(Float, nullable=False)
+    geometry = Column(Geometry('POLYGON', srid=4326), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    current_positions = relationship("CurrentDronePosition", back_populates="hex_cell")
+
+
+class CurrentDronePosition(Base):
+    __tablename__ = "current_drone_positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    drone_id = Column(Integer, ForeignKey("drones.id"), nullable=False)
+    flight_request_id = Column(Integer, ForeignKey("flight_requests.id"))
+    hex_cell_id = Column(Integer, ForeignKey("hex_grid_cells.id"), nullable=False)
+    
+    # Position data
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    altitude = Column(Float, nullable=False)
+    
+    # Flight data
+    speed = Column(Float, default=0.0)  # m/s
+    heading = Column(Float, default=0.0)  # degrees
+    battery_level = Column(Float, default=100.0)  # percentage
+    
+    # Status
+    status = Column(String, default="airborne")  # airborne, landed, emergency
+    
+    # Timestamp
+    last_update = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    hex_cell = relationship("HexGridCell", back_populates="current_positions")
+    drone = relationship("Drone")
+    flight_request = relationship("FlightRequest")
 
 
 class TelemetryData(Base):

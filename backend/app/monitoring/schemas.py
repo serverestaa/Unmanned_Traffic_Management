@@ -73,3 +73,44 @@ class MonitoringDashboard(BaseModel):
 class WebSocketMessage(BaseModel):
     type: str  # telemetry, alert, status_update
     data: dict
+
+
+class HexGridCellBase(BaseModel):
+    h3_index: str
+    center_lat: float
+    center_lng: float
+
+
+class HexGridCell(HexGridCellBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CurrentDronePositionBase(BaseModel):
+    drone_id: int
+    flight_request_id: Optional[int] = None
+    hex_cell_id: int
+    latitude: float
+    longitude: float
+    altitude: float
+    speed: Optional[float] = 0.0
+    heading: Optional[float] = 0.0
+    battery_level: Optional[float] = 100.0
+    status: Optional[str] = "airborne"
+
+
+class CurrentDronePosition(CurrentDronePositionBase):
+    id: int
+    last_update: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ZoneDroneCount(BaseModel):
+    hex_cell: HexGridCell
+    drone_count: int
+    drones: List[CurrentDronePosition]
