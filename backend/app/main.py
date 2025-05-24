@@ -11,7 +11,7 @@ from .flights.router import router as flights_router
 from .monitoring.router import router as monitoring_router
 from .monitoring.telemetry import telemetry_generator
 from .utils.logger import setup_logger
-
+from .monitoring.scripts.populate_hex_grid import router as populate_hex_grid_router
 # Set up application logger
 logger = setup_logger("utm.main")
 
@@ -50,6 +50,7 @@ app.include_router(auth_router)
 app.include_router(drones_router)
 app.include_router(flights_router)
 app.include_router(monitoring_router)
+app.include_router(populate_hex_grid_router, tags=["populate-hex-grid"])
 
 @app.get("/")
 async def root():
