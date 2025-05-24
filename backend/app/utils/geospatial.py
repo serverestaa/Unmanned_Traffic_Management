@@ -119,8 +119,13 @@ def line_intersects_circle(p1: Tuple[float, float], p2: Tuple[float, float],
     dist1 = calculate_distance(p1[0], p1[1], center_lat, center_lon)
     dist2 = calculate_distance(p2[0], p2[1], center_lat, center_lon)
     
+    logger.debug(f"Line intersection check - Point 1: ({p1[0]}, {p1[1]}), Point 2: ({p2[0]}, {p2[1]})")
+    logger.debug(f"Line intersection check - Center: ({center_lat}, {center_lon}), Radius: {radius}m")
+    logger.debug(f"Line intersection check - Distance to Point 1: {dist1:.2f}m, Distance to Point 2: {dist2:.2f}m")
+    
     # If either endpoint is within the circle, we have an intersection
     if dist1 <= radius or dist2 <= radius:
+        logger.debug("Line intersection detected - endpoint within circle")
         return True
     
     # Calculate the azimuth and distance of the line segment
@@ -130,9 +135,25 @@ def line_intersects_circle(p1: Tuple[float, float], p2: Tuple[float, float],
     az1, _, _ = geod.inv(center_lon, center_lat, p1[1], p1[0])
     az2, _, _ = geod.inv(center_lon, center_lat, p2[1], p2[0])
     
-    # Calculate the minimum distance from center to line segment
-    # This is the perpendicular distance
-    min_dist = min(dist1, dist2) * math.sin(math.radians(abs(az1 - az12)))
+    logger.debug(f"Line intersection check - Azimuths: line={az12:.2f}°, to_point1={az1:.2f}°, to_point2={az2:.2f}°")
+    
+    # Calculate the minimum distance from center to line segment using geodesic calculations
+    # We'll use a series of points along the line to find the minimum distance
+    num_points = 10  # Number of points to check along the line
+    min_dist = float('inf')
+    
+    for i in range(num_points + 1):
+        # Calculate intermediate point along the geodesic line
+        fraction = i / num_points
+        lon, lat, _ = geod.fwd(p1[1], p1[0], az12, dist * fraction)
+        
+        # Calculate distance from center to this point
+        point_dist = calculate_distance(lat, lon, center_lat, center_lon)
+        min_dist = min(min_dist, point_dist)
+        
+        logger.debug(f"Line intersection check - Point {i}: ({lat}, {lon}), Distance: {point_dist:.2f}m")
+    
+    logger.debug(f"Line intersection check - Minimum distance to line: {min_dist:.2f}m")
     
     return min_dist <= radius
 
