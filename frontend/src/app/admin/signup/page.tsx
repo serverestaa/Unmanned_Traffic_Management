@@ -1,5 +1,5 @@
 
-import { SignupPage } from "@/views/SignupPage";
+import { SignupPage } from "@/views/SignupAdminPage";
 
 
 
