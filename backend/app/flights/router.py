@@ -117,10 +117,10 @@ async def create_flight_request(
 
     # Check for conflicts
     waypoints_data = [
-        {"latitude": wp.latitude, "longitude": wp.longitude, "altitude": wp.altitude}
+        WaypointBase(latitude=wp.latitude, longitude=wp.longitude, altitude=wp.altitude)
         for wp in flight_request.waypoints
     ]
-    conflicts = await check_route_conflicts(waypoints_data, flight_request.max_altitude, db, current_user)
+    conflicts = await check_route_conflicts(waypoints_data, db, current_user)
 
     if conflicts.has_conflicts:
         raise HTTPException(
