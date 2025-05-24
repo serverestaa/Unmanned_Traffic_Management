@@ -4,6 +4,8 @@ import { ReactNode } from 'react';
 import { store } from '@/store';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { SidebarProvider } from "@/components/ui/sidebar"
+import { Toaster } from 'sonner';
+import { AuthGate } from '@/lib/authGate';
 
 export function Providers({ children }: { children: ReactNode }) {
   return  <Provider store={store}>
@@ -13,6 +15,8 @@ export function Providers({ children }: { children: ReactNode }) {
               disableTransitionOnChange
             >
               <SidebarProvider>
+                <Toaster position="top-right" />
+                <AuthGate />
                 {children}
               </SidebarProvider>
             </ThemeProvider>

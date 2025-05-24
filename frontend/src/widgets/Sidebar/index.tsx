@@ -10,12 +10,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { TypographyH3 } from "@/components/ui/typo3"
+import { TypographyH3 } from "@/components/ui/typoh3"
 
 const items = [
   {
-    title: "Home",
-    url: "#",
+    title: "My drones",
+    url: "/my-drones",
     icon: Home,
   },
   {
@@ -29,7 +29,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
         <SidebarHeader >
-            <TypographyH3 className="pt-8">
+            <TypographyH3 className="pt-1">
                 Decedron
             </TypographyH3>
         </SidebarHeader>

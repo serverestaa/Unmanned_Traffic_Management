@@ -32,7 +32,7 @@ export default function RootLayout({
       >
         <Providers>
           <AppSidebar />
-          <main className="min-h-screen flex w-full flex-col">
+          <main className="min-h-screen flex w-full gap-4 flex-col">
             <Header />
             {children}
           </main>
