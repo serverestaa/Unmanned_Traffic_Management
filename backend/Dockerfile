@@ -18,6 +18,7 @@ COPY . .
 
 # Create alembic directory if it doesn't exist
 RUN mkdir -p alembic/versions
+RUN python backend/scripts/populate_hex_grid.py
 
 EXPOSE 8000
 
