@@ -3,12 +3,12 @@ import {
   GoogleMap,
   DrawingManager,
   Polygon,
-  Circle,                           // ← NEW
+  Circle,                        
   useJsApiLoader,
 } from '@react-google-maps/api';
 import { useCallback, useRef, useState } from 'react';
 import {
-  useGetRestrictedZonesQuery,      // ← NEW
+  useGetRestrictedZonesQuery,     
   RestrictedZone,
 } from '@/api/flights';
 
@@ -20,10 +20,8 @@ export default function MapWithDraw() {
     libraries: ['drawing'],
   });
 
-  /* --------- fetch restricted zones from server --------- */
   const { data: zones = [] } = useGetRestrictedZonesQuery();
 
-  /* --------- user-drawn polygons --------- */
   const [polys, setPolys] = useState<{ id: string; path: google.maps.LatLngLiteral[] }[]>([]);
   const nextId = useRef(0);
 
@@ -50,12 +48,11 @@ export default function MapWithDraw() {
         streetViewControl: false,
       }}
     >
-      {/* server-side restricted zones */}
       {zones.map((z) => (
         <Circle
           key={z.id}
           center={{ lat: z.center_lat, lng: z.center_lng }}
-          radius={z.radius}                 // metres
+          radius={z.radius}                 
           options={{
             fillColor: '#FF5252',
             fillOpacity: 0.25,
@@ -65,8 +62,6 @@ export default function MapWithDraw() {
           }}
         />
       ))}
-
-      {/* user-drawn polygons */}
       {polys.map((poly) => (
         <Polygon
           key={poly.id}

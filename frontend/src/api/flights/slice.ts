@@ -1,4 +1,4 @@
-// features/flights/restrictedZonesSlice.ts
+
 import {
     createEntityAdapter,
     createSlice,
@@ -15,7 +15,6 @@ import {
     name: 'restrictedZones',
     initialState: adapter.getInitialState(),
     reducers: {
-      // any local-only updates you might need in future
     },
     extraReducers: (builder) => {
       builder.addMatcher(
@@ -33,7 +32,6 @@ import {
       builder.addMatcher(
         flightsApi.endpoints.deleteRestrictedZone.matchFulfilled,
         (state, { meta }) => {
-          // meta.arg.originalArgs is zoneId
           adapter.removeOne(state, meta.arg.originalArgs as number);
         }
       );

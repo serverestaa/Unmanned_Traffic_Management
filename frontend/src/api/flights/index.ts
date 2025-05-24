@@ -1,9 +1,7 @@
-// api/flights/index.ts
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { BASE_URL } from '@/lib/constants';   // already used elsewhere
-import { getToken } from '@/lib/tokenUtils';
 
-/* ---------- Types ---------- */
+import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { BASE_URL } from '@/lib/constants';  
+import { getToken } from '@/lib/tokenUtils';
 
 export interface RestrictedZone {
   id: number;
@@ -11,7 +9,7 @@ export interface RestrictedZone {
   description: string;
   center_lat: number;
   center_lng: number;
-  radius: number;          // metres
+  radius: number;        
   max_altitude: number;
   is_active: boolean;
   created_at: string;
@@ -71,8 +69,6 @@ export interface ConflictResponse {
   restricted_zones: RestrictedZone[];
 }
 
-/* ---------- API ---------- */
-
 export const flightsApi = createApi({
   reducerPath: 'flightsApi',
   baseQuery: fetchBaseQuery({
@@ -85,7 +81,6 @@ export const flightsApi = createApi({
   }),
   tagTypes: ['RestrictedZones', 'FlightRequests'],
   endpoints: (builder) => ({
-    /* ----- restricted zones ----- */
     getRestrictedZones: builder.query<RestrictedZone[], void>({
       query: () => '/restricted-zones',
       providesTags: ['RestrictedZones'],
@@ -106,7 +101,6 @@ export const flightsApi = createApi({
       invalidatesTags: ['RestrictedZones'],
     }),
 
-    /* ----- conflict check ----- */
     checkConflicts: builder.mutation<ConflictResponse, CheckConflictPoint[]>({
       query: (body) => ({
         url: '/check-conflicts',
@@ -115,7 +109,6 @@ export const flightsApi = createApi({
       }),
     }),
 
-    /* ----- flight requests (CRUD) ----- */
     getMyFlightRequests: builder.query<FlightRequest[], void>({
       query: () => '/requests',
       providesTags: ['FlightRequests'],
@@ -154,7 +147,6 @@ export const flightsApi = createApi({
 });
 
 export const {
-  /* hooks we’ll need in UI */
   useGetRestrictedZonesQuery,
   useCreateRestrictedZoneMutation,
   useDeleteRestrictedZoneMutation,
