@@ -9,7 +9,6 @@ import {
 import { useCallback, useRef, useState } from 'react';
 import {
   useGetRestrictedZonesQuery,     
-  RestrictedZone,
 } from '@/api/flights';
 
 const center = { lat: 51.1605, lng: 71.4704 };

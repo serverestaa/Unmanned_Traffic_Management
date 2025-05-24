@@ -15,6 +15,7 @@ export interface RestrictedZone {
   created_at: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface NewRestrictedZone
   extends Omit<RestrictedZone, 'id' | 'is_active' | 'created_at'> {}
 
@@ -42,7 +43,7 @@ export interface FlightRequest {
   drone?: Record<string, unknown>;
   pilot?: Record<string, unknown>;
 }
-
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface NewFlightRequest
   extends Omit<
     FlightRequest,

@@ -2,7 +2,6 @@
 import {
     createEntityAdapter,
     createSlice,
-    PayloadAction,
   } from '@reduxjs/toolkit';
   import { RestrictedZone } from '@/api/flights';
   import { flightsApi } from '@/api/flights';
