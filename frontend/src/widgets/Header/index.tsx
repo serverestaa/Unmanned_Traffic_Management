@@ -21,8 +21,7 @@ import { useAppSelector } from '@/store/hooks'
 
 const LABELS: Record<string, string> = {
   '':        'Decedron',
-  dashboard: 'Online dashboard',
-  map:       'Online map',      // new route
+  dashboard: 'Dashboard',
   drones:    'My drones',
   signin:    'Sign in',
   signup:    'Sign up',

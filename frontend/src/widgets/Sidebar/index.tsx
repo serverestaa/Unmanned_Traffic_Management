@@ -1,4 +1,4 @@
-import { Home, Settings } from "lucide-react"
+import { Home, LayoutDashboard, Plane } from "lucide-react"
 
 import {
   Sidebar,
@@ -14,15 +14,21 @@ import { TypographyH3 } from "@/components/ui/typoh3"
 
 const items = [
   {
-    title: "My drones",
-    url: "/my-drones",
+    title: "Home",
+    url: "/",
     icon: Home,
   },
   {
-    title: "Settings",
-    url: "#",
-    icon: Settings,
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: LayoutDashboard,
   },
+  {
+    title: "My drones",
+    url: "/my-drones",
+    icon: Plane,
+  }
+  
 ]
 
 export function AppSidebar() {
