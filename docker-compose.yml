@@ -26,8 +26,7 @@ services:
     ports:
       - "8010:8000"
     depends_on:
-      db:
-        condition: service_healthy
+      - db
   # frontend:
   #   build:
   #     context: ./frontend
@@ -44,3 +43,4 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
