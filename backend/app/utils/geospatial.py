@@ -139,15 +139,51 @@ def line_intersects_circle(p1: Tuple[float, float], p2: Tuple[float, float],
 
 def lon_lat_to_meters(lon: float, lat: float, ref_lon: float, ref_lat: float) -> Tuple[float, float]:
     """
-    Convert lon/lat to approximate meters relative to reference point
+    Convert lon/lat to meters relative to reference point using accurate geodesic calculations
+    
+    Args:
+        lon: Longitude of the point to convert
+        lat: Latitude of the point to convert
+        ref_lon: Reference longitude
+        ref_lat: Reference latitude
+        
+    Returns:
+        Tuple[float, float]: (x, y) coordinates in meters relative to reference point
     """
-    # Approximate conversion (good enough for small distances)
-    lat_rad = math.radians(ref_lat)
-
-    x = (lon - ref_lon) * 111320 * math.cos(lat_rad)
-    y = (lat - ref_lat) * 110540
-
-    return x, y
+    try:
+        # Create a transformer from WGS84 to a local UTM projection
+        # Find the appropriate UTM zone for the reference point
+        utm_zone = int((ref_lon + 180) / 6) + 1
+        utm_band = 'N' if ref_lat >= 0 else 'S'
+        utm_proj = f"+proj=utm +zone={utm_zone} +{utm_band} +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+        
+        transformer = pyproj.Transformer.from_crs(
+            "EPSG:4326",  # WGS84
+            utm_proj,
+            always_xy=True
+        )
+        
+        # Transform the reference point
+        ref_x, ref_y = transformer.transform(ref_lon, ref_lat)
+        
+        # Transform the target point
+        point_x, point_y = transformer.transform(lon, lat)
+        
+        # Calculate relative coordinates
+        x = point_x - ref_x
+        y = point_y - ref_y
+        
+        logger.debug(f"Coordinate conversion: ({lon}, {lat}) -> ({x:.2f}m, {y:.2f}m) relative to ({ref_lon}, {ref_lat})")
+        return x, y
+        
+    except Exception as e:
+        logger.error(f"Error in coordinate conversion: {str(e)}", exc_info=True)
+        # Fallback to approximate calculation for very small distances
+        lat_rad = math.radians(ref_lat)
+        x = (lon - ref_lon) * 111320 * math.cos(lat_rad)
+        y = (lat - ref_lat) * 110540
+        logger.warning(f"Using fallback calculation for coordinates near ({ref_lon}, {ref_lat})")
+        return x, y
 
 
 def create_linestring_from_waypoints(waypoints: List[Tuple[float, float]]) -> str:
