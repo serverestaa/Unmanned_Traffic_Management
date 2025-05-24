@@ -23,7 +23,7 @@ router = APIRouter(prefix="/flights", tags=["Flights"])
 logger = setup_logger("utm.flights")
 
 
-@router.post("/restricted-zones/", response_model=RestrictedZoneSchema)
+@router.post("/restricted-zones", response_model=RestrictedZoneSchema)
 async def create_restricted_zone(
         zone: RestrictedZoneCreate,
         db: AsyncSession = Depends(get_db),
@@ -43,7 +43,7 @@ async def create_restricted_zone(
     return db_zone
 
 
-@router.get("/restricted-zones/", response_model=List[RestrictedZoneSchema])
+@router.get("/restricted-zones", response_model=List[RestrictedZoneSchema])
 async def get_restricted_zones(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
@@ -54,7 +54,7 @@ async def get_restricted_zones(
     return result.scalars().all()
 
 
-@router.post("/check-conflicts/", response_model=ConflictCheck)
+@router.post("/check-conflicts", response_model=ConflictCheck)
 async def check_route_conflicts(
         waypoints: List[WaypointBase],  # [{"latitude": float, "longitude": float, "altitude": float}]
         db: AsyncSession = Depends(get_db),
@@ -96,7 +96,7 @@ async def check_route_conflicts(
     )
 
 
-@router.post("/requests/", response_model=FlightRequestWithDetails)
+@router.post("/requests", response_model=FlightRequestWithDetails)
 async def create_flight_request(
         flight_request: FlightRequestCreate,
         db: AsyncSession = Depends(get_db),
@@ -204,7 +204,7 @@ async def create_flight_request(
     return FlightRequestWithDetails(**response_data)
 
 
-@router.get("/requests/", response_model=List[FlightRequestWithDetails])
+@router.get("/requests", response_model=List[FlightRequestWithDetails])
 async def get_my_flight_requests(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
@@ -279,7 +279,7 @@ async def get_my_flight_requests(
     return detailed_requests
 
 
-@router.get("/requests/all/", response_model=List[FlightRequestWithDetails])
+@router.get("/requests/all", response_model=List[FlightRequestWithDetails])
 async def get_all_flight_requests(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
@@ -359,7 +359,7 @@ async def get_all_flight_requests(
     return detailed_requests
 
 
-@router.get("/requests/{request_id}/", response_model=FlightRequestWithDetails)
+@router.get("/requests/{request_id}", response_model=FlightRequestWithDetails)
 async def get_flight_request(
         request_id: int,
         db: AsyncSession = Depends(get_db),
@@ -441,7 +441,7 @@ async def get_flight_request(
     return FlightRequestWithDetails(**response_data)
 
 
-@router.put("/requests/{request_id}/", response_model=FlightRequestSchema)
+@router.put("/requests/{request_id}", response_model=FlightRequestSchema)
 async def update_flight_request_status(
         request_id: int,
         update_data: FlightRequestUpdate,
@@ -481,7 +481,7 @@ async def update_flight_request_status(
     return flight_request
 
 
-@router.delete("/restricted-zones/{zone_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/restricted-zones/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_restricted_zone(
         zone_id: int,
         db: AsyncSession = Depends(get_db),
