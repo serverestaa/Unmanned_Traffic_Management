@@ -77,7 +77,7 @@ class FlightRequest(FlightRequestBase):
 
 
 class FlightRequestWithDetails(FlightRequest):
-    waypoints: List[Waypoint] = []
+    waypoints: List[WaypointBase] = []
     drone: dict  # Basic drone info
     pilot: dict  # Basic pilot info
 

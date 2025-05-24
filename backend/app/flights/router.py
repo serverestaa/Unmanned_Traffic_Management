@@ -96,7 +96,7 @@ async def check_route_conflicts(
     )
 
 
-@router.post("/requests/", response_model=FlightRequestSchema)
+@router.post("/requests/", response_model=FlightRequestWithDetails)
 async def create_flight_request(
         flight_request: FlightRequestCreate,
         db: AsyncSession = Depends(get_db),
@@ -157,21 +157,129 @@ async def create_flight_request(
 
     await db.commit()
     await db.refresh(db_flight_request)
-    return db_flight_request
+
+    # Get waypoints
+    waypoints_result = await db.execute(
+        select(Waypoint)
+        .filter(Waypoint.flight_request_id == db_flight_request.id)
+        .order_by(Waypoint.sequence)
+    )
+    waypoints = waypoints_result.scalars().all()
+
+    # Get drone and pilot info
+    drone_result = await db.execute(select(Drone).filter(Drone.id == db_flight_request.drone_id))
+    drone = drone_result.scalar_one()
+
+    pilot_result = await db.execute(select(User).filter(User.id == db_flight_request.pilot_id))
+    pilot = pilot_result.scalar_one()
+
+    # Construct the response using model_dump() for SQLAlchemy models
+    response_data = {
+        "id": db_flight_request.id,
+        "drone_id": db_flight_request.drone_id,
+        "pilot_id": db_flight_request.pilot_id,
+        "planned_start_time": db_flight_request.planned_start_time,
+        "planned_end_time": db_flight_request.planned_end_time,
+        "max_altitude": db_flight_request.max_altitude,
+        "purpose": db_flight_request.purpose,
+        "status": db_flight_request.status,
+        "approval_notes": db_flight_request.approval_notes,
+        "approved_by": db_flight_request.approved_by,
+        "created_at": db_flight_request.created_at,
+        "approved_at": db_flight_request.approved_at,
+        "waypoints": waypoints,
+        "drone": {
+            "id": drone.id,
+            "brand": drone.brand,
+            "model": drone.model,
+            "serial_number": drone.serial_number
+        },
+        "pilot": {
+            "id": pilot.id,
+            "full_name": pilot.full_name,
+            "email": pilot.email
+        }
+    }
+
+    return FlightRequestWithDetails(**response_data)
 
 
-@router.get("/requests/", response_model=List[FlightRequestSchema])
+@router.get("/requests/", response_model=List[FlightRequestWithDetails])
 async def get_my_flight_requests(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
+    # Get flight requests
     result = await db.execute(
         select(FlightRequest).filter(FlightRequest.pilot_id == current_user.id)
     )
-    return result.scalars().all()
+    flight_requests = result.scalars().all()
+    
+    # For each flight request, get waypoints, drone, and pilot info
+    detailed_requests = []
+    for flight_request in flight_requests:
+        # Get waypoints
+        waypoints_result = await db.execute(
+            select(Waypoint)
+            .filter(Waypoint.flight_request_id == flight_request.id)
+            .order_by(Waypoint.sequence)
+        )
+        waypoints = waypoints_result.scalars().all()
+
+        # Get drone info
+        drone_result = await db.execute(select(Drone).filter(Drone.id == flight_request.drone_id))
+        drone = drone_result.scalar_one()
+
+        # Get pilot info
+        pilot_result = await db.execute(select(User).filter(User.id == flight_request.pilot_id))
+        pilot = pilot_result.scalar_one()
+
+        # Convert waypoints to dictionaries
+        waypoints_data = [
+            {
+                "id": wp.id,
+                "sequence": wp.sequence,
+                "latitude": wp.latitude,
+                "longitude": wp.longitude,
+                "altitude": wp.altitude,
+                "flight_request_id": wp.flight_request_id
+            }
+            for wp in waypoints
+        ]
+
+        # Construct response data
+        response_data = {
+            "id": flight_request.id,
+            "drone_id": flight_request.drone_id,
+            "pilot_id": flight_request.pilot_id,
+            "planned_start_time": flight_request.planned_start_time,
+            "planned_end_time": flight_request.planned_end_time,
+            "max_altitude": flight_request.max_altitude,
+            "purpose": flight_request.purpose,
+            "status": flight_request.status,
+            "approval_notes": flight_request.approval_notes,
+            "approved_by": flight_request.approved_by,
+            "created_at": flight_request.created_at,
+            "approved_at": flight_request.approved_at,
+            "waypoints": waypoints_data,
+            "drone": {
+                "id": drone.id,
+                "brand": drone.brand,
+                "model": drone.model,
+                "serial_number": drone.serial_number
+            },
+            "pilot": {
+                "id": pilot.id,
+                "full_name": pilot.full_name,
+                "email": pilot.email
+            }
+        }
+        detailed_requests.append(FlightRequestWithDetails(**response_data))
+
+    return detailed_requests
 
 
-@router.get("/requests/all/", response_model=List[FlightRequestSchema])
+@router.get("/requests/all/", response_model=List[FlightRequestWithDetails])
 async def get_all_flight_requests(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
@@ -183,8 +291,72 @@ async def get_all_flight_requests(
             detail="Not enough permissions"
         )
 
+    # Get all flight requests
     result = await db.execute(select(FlightRequest))
-    return result.scalars().all()
+    flight_requests = result.scalars().all()
+    
+    # For each flight request, get waypoints, drone, and pilot info
+    detailed_requests = []
+    for flight_request in flight_requests:
+        # Get waypoints
+        waypoints_result = await db.execute(
+            select(Waypoint)
+            .filter(Waypoint.flight_request_id == flight_request.id)
+            .order_by(Waypoint.sequence)
+        )
+        waypoints = waypoints_result.scalars().all()
+
+        # Get drone info
+        drone_result = await db.execute(select(Drone).filter(Drone.id == flight_request.drone_id))
+        drone = drone_result.scalar_one()
+
+        # Get pilot info
+        pilot_result = await db.execute(select(User).filter(User.id == flight_request.pilot_id))
+        pilot = pilot_result.scalar_one()
+
+        # Convert waypoints to dictionaries
+        waypoints_data = [
+            {
+                "id": wp.id,
+                "sequence": wp.sequence,
+                "latitude": wp.latitude,
+                "longitude": wp.longitude,
+                "altitude": wp.altitude,
+                "flight_request_id": wp.flight_request_id
+            }
+            for wp in waypoints
+        ]
+
+        # Construct response data
+        response_data = {
+            "id": flight_request.id,
+            "drone_id": flight_request.drone_id,
+            "pilot_id": flight_request.pilot_id,
+            "planned_start_time": flight_request.planned_start_time,
+            "planned_end_time": flight_request.planned_end_time,
+            "max_altitude": flight_request.max_altitude,
+            "purpose": flight_request.purpose,
+            "status": flight_request.status,
+            "approval_notes": flight_request.approval_notes,
+            "approved_by": flight_request.approved_by,
+            "created_at": flight_request.created_at,
+            "approved_at": flight_request.approved_at,
+            "waypoints": waypoints_data,
+            "drone": {
+                "id": drone.id,
+                "brand": drone.brand,
+                "model": drone.model,
+                "serial_number": drone.serial_number
+            },
+            "pilot": {
+                "id": pilot.id,
+                "full_name": pilot.full_name,
+                "email": pilot.email
+            }
+        }
+        detailed_requests.append(FlightRequestWithDetails(**response_data))
+
+    return detailed_requests
 
 
 @router.get("/requests/{request_id}/", response_model=FlightRequestWithDetails)
@@ -225,12 +397,48 @@ async def get_flight_request(
     pilot_result = await db.execute(select(User).filter(User.id == flight_request.pilot_id))
     pilot = pilot_result.scalar_one()
 
-    return FlightRequestWithDetails(
-        **flight_request.__dict__,
-        waypoints=waypoints,
-        drone={"id": drone.id, "brand": drone.brand, "model": drone.model, "serial_number": drone.serial_number},
-        pilot={"id": pilot.id, "full_name": pilot.full_name, "email": pilot.email}
-    )
+    # Convert waypoints to dictionaries
+    waypoints_data = [
+        {
+            "id": wp.id,
+            "sequence": wp.sequence,
+            "latitude": wp.latitude,
+            "longitude": wp.longitude,
+            "altitude": wp.altitude,
+            "flight_request_id": wp.flight_request_id
+        }
+        for wp in waypoints
+    ]
+
+    # Construct response data
+    response_data = {
+        "id": flight_request.id,
+        "drone_id": flight_request.drone_id,
+        "pilot_id": flight_request.pilot_id,
+        "planned_start_time": flight_request.planned_start_time,
+        "planned_end_time": flight_request.planned_end_time,
+        "max_altitude": flight_request.max_altitude,
+        "purpose": flight_request.purpose,
+        "status": flight_request.status,
+        "approval_notes": flight_request.approval_notes,
+        "approved_by": flight_request.approved_by,
+        "created_at": flight_request.created_at,
+        "approved_at": flight_request.approved_at,
+        "waypoints": waypoints_data,
+        "drone": {
+            "id": drone.id,
+            "brand": drone.brand,
+            "model": drone.model,
+            "serial_number": drone.serial_number
+        },
+        "pilot": {
+            "id": pilot.id,
+            "full_name": pilot.full_name,
+            "email": pilot.email
+        }
+    }
+
+    return FlightRequestWithDetails(**response_data)
 
 
 @router.put("/requests/{request_id}/", response_model=FlightRequestSchema)
