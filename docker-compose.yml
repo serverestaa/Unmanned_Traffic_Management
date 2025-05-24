@@ -35,6 +35,7 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: http://localhost:8010
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: AIzaSyAiZHKZvgcLWyto_A-dM4zzcQwZCCraaRA
     ports:
       - "3000:3000"
     depends_on:
