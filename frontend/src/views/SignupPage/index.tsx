@@ -38,7 +38,7 @@ export const SignupPage = () => {
       email:     "",
       full_name: "",
       phone:     "",
-      role:      "pilot",
+      role:      "admin",
       password:  "",
     },
   })
