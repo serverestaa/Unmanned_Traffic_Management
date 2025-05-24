@@ -11,12 +11,12 @@ from ..database import get_db
 from ..auth.utils import get_current_active_user
 from ..auth.models import User
 from ..drones.models import Drone
-from ..utils.geospatial import route_intersects_zone, create_linestring_from_waypoints
+from ..utils.geospatial import route_intersects_zone, create_linestring_from_waypoints, calculate_distance
 from .models import FlightRequest, RestrictedZone, Waypoint
 from .schemas import (
     FlightRequestCreate, FlightRequestUpdate, FlightRequest as FlightRequestSchema,
     FlightRequestWithDetails, RestrictedZoneCreate, RestrictedZone as RestrictedZoneSchema,
-    ConflictCheck
+    ConflictCheck, WaypointBase
 )
 
 router = APIRouter(prefix="/flights", tags=["Flights"])
@@ -56,7 +56,7 @@ async def get_restricted_zones(
 
 @router.post("/check-conflicts/", response_model=ConflictCheck)
 async def check_route_conflicts(
-        waypoints: List[dict],  # [{"latitude": float, "longitude": float, "altitude": float}]
+        waypoints: List[WaypointBase],  # [{"latitude": float, "longitude": float, "altitude": float}]
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_active_user)
 ):
@@ -70,21 +70,23 @@ async def check_route_conflicts(
     restricted_zones = result.scalars().all()
 
     # Convert waypoints to coordinate tuples
-    route_points = [(wp["latitude"], wp["longitude"]) for wp in waypoints]
+    route_points = [(wp.latitude, wp.longitude) for wp in waypoints]
 
     for zone in restricted_zones:
         # Check if route intersects with restricted zone
         if route_intersects_zone(route_points, zone.center_lat, zone.center_lng, zone.radius):
             conflicts.append(f"Route intersects with restricted zone: {zone.name}")
+            distance = calculate_distance(route_points[0][0], route_points[0][1], zone.center_lat, zone.center_lng)
+            conflicts.append(f"Distance to the restricted zone: {distance}m, while restricted zone radius is {zone.radius}m")
             conflicting_zones.append(zone)
 
         # Check altitude conflicts for waypoints in zone
         for wp in waypoints:
-            if (wp["altitude"] > zone.max_altitude and
-                    route_intersects_zone([(wp["latitude"], wp["longitude"])],
+            if (wp.altitude > zone.max_altitude and
+                    route_intersects_zone([(wp.latitude, wp.longitude)],
                                           zone.center_lat, zone.center_lng, zone.radius)):
                 conflicts.append(
-                    f"Altitude {wp['altitude']}m exceeds limit {zone.max_altitude}m in zone: {zone.name}"
+                    f"Altitude {wp.altitude}m exceeds limit {zone.max_altitude}m in zone: {zone.name}"
                 )
 
     return ConflictCheck(
