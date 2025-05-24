@@ -13,52 +13,24 @@ export const userApi = createApi({
   baseQuery: fetchBaseQuery({ baseUrl: BASE_URL }),
   tagTypes: ['User'],
   endpoints: (builder) => ({
-    getCurrentUser: builder.query<User, void>({
-      query: () => `/user`,
-      providesTags: ['User'],
-    }),
-    getUserById: builder.query<User, string>({
-      query: (id) => `/users/${id}`,
-      providesTags: (result, error, id) => [{ type: 'User', id }],
-    }),
-    updateUser: builder.mutation<User, Partial<User> & Pick<User, 'id'>>({
-      query: ({ id, ...patch }) => ({
-        url: `/users/${id}`,
-        method: 'PUT',
-        body: patch,
-      }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'User', id }],
-    }),
-    listUsers: builder.query<User[], void>({
-      query: () => `/users`,
-      providesTags: (result) =>
-        result
-          ? [...result.map(({ id }) => ({ type: 'User' as const, id })), { type: 'User', id: 'LIST' }]
-          : [{ type: 'User', id: 'LIST' }],
-    }),
-    addUser: builder.mutation<User, Partial<User>>({
-      query: (newUser) => ({
-        url: `/users`,
+    signin: builder.mutation<User, { email: string; password: string }>({
+      query: (credentials) => ({
+        url: '/auth/login',
         method: 'POST',
-        body: newUser,
+        body: credentials,
       }),
-      invalidatesTags: [{ type: 'User', id: 'LIST' }],
     }),
-    deleteUser: builder.mutation<{ success: boolean; id: string }, string>({
-      query: (id) => ({
-        url: `/users/${id}`,
-        method: 'DELETE',
+    register: builder.mutation<User, { name: string; email: string; password: string }>({
+      query: (userData) => ({
+        url: '/auth/register',
+        method: 'POST',
+        body: userData,
       }),
-      invalidatesTags: (result, error, id) => [{ type: 'User', id }, { type: 'User', id: 'LIST' }],
     }),
   }),
 });
 
 export const {
-  useGetCurrentUserQuery,
-  useGetUserByIdQuery,
-  useListUsersQuery,
-  useUpdateUserMutation,
-  useAddUserMutation,
-  useDeleteUserMutation,
+  useSigninMutation,
+  useRegisterMutation
 } = userApi;
