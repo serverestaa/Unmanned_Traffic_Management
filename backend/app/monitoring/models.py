@@ -1,5 +1,5 @@
 # app/monitoring/models.py
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
@@ -17,11 +17,16 @@ class HexGridCell(Base):
     h3_index = Column(String, unique=True, index=True, nullable=False)  # H3 index at resolution 8
     center_lat = Column(Float, nullable=False)
     center_lng = Column(Float, nullable=False)
-    geometry = Column(Geometry('POLYGON', srid=4326), nullable=True)
+    geometry = Column(Geometry('POLYGON', srid=4326, spatial_index=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     current_positions = relationship("CurrentDronePosition", back_populates="hex_cell")
+
+    __table_args__ = (
+        # Add GiST index for faster spatial queries
+        Index('idx_hex_grid_cell_geometry', 'geometry', postgresql_using='gist'),
+    )
 
 
 class CurrentDronePosition(Base):
@@ -30,7 +35,7 @@ class CurrentDronePosition(Base):
     id = Column(Integer, primary_key=True, index=True)
     drone_id = Column(Integer, ForeignKey("drones.id"), nullable=False)
     flight_request_id = Column(Integer, ForeignKey("flight_requests.id"))
-    hex_cell_id = Column(Integer, ForeignKey("hex_grid_cells.id"), nullable=False)
+    hex_cell_id = Column(Integer, ForeignKey("hex_grid_cells.id"), nullable=False, index=True)
     
     # Position data
     latitude = Column(Float, nullable=False)
@@ -52,6 +57,11 @@ class CurrentDronePosition(Base):
     hex_cell = relationship("HexGridCell", back_populates="current_positions")
     drone = relationship("Drone")
     flight_request = relationship("FlightRequest")
+
+    __table_args__ = (
+        # Add composite index for common query patterns
+        Index('idx_current_pos_hex_cell_status', 'hex_cell_id', 'status'),
+    )
 
 
 class TelemetryData(Base):

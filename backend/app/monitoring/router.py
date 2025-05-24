@@ -478,5 +478,48 @@ async def process_telemetry_data(
         )
 
 
+@router.get("/zone/drones", response_model=List[ZoneDroneCount])
+async def get_zone_drones(
+    zone_h3_indices: List[str],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get drones in specified H3 zones with optimized spatial querying.
+    Uses both H3 indices and spatial indexes for maximum performance.
+    """
+    # First get the hex cells for the given H3 indices
+    hex_cells = await db.execute(
+        select(HexGridCell)
+        .where(HexGridCell.h3_index.in_(zone_h3_indices))
+    )
+    hex_cells = hex_cells.scalars().all()
+    
+    if not hex_cells:
+        return []
+    
+    # Get all drones in these cells with a single optimized query
+    result = await db.execute(
+        select(
+            HexGridCell,
+            func.count(CurrentDronePosition.id).label('drone_count'),
+            func.array_agg(CurrentDronePosition).label('drones')
+        )
+        .join(CurrentDronePosition, CurrentDronePosition.hex_cell_id == HexGridCell.id)
+        .where(HexGridCell.id.in_([cell.id for cell in hex_cells]))
+        .group_by(HexGridCell.id)
+    )
+    
+    zone_counts = []
+    for row in result:
+        zone_counts.append(ZoneDroneCount(
+            hex_cell=row[0],
+            drone_count=row[1],
+            drones=row[2] if row[2] else []
+        ))
+    
+    return zone_counts
+
+
 # Import here to avoid circular imports
 from ..database import AsyncSessionLocal
