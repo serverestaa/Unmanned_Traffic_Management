@@ -85,6 +85,8 @@ export const droneApi = createApi({
 export const {
   useGetMyDronesQuery,
   useLazyGetDroneQuery,
+  useGetAllDronesQuery,
+  
   useCreateDroneMutation,
   useUpdateDroneMutation,
   useDeleteDroneMutation,
