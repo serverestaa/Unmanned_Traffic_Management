@@ -1,5 +1,5 @@
 # app/monitoring/models.py
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, Index, ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
@@ -19,9 +19,11 @@ class HexGridCell(Base):
     center_lng = Column(Float, nullable=False)
     geometry = Column(Geometry('POLYGON', srid=4326, spatial_index=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    drones_count = Column(Integer, default=0)  # Track number of drones in this hex
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())  # Track when drones were last updated
 
     # Relationships
-    current_positions = relationship("CurrentDronePosition", back_populates="hex_cell")
+    current_positions = relationship("CurrentDronePosition", back_populates="hex_cell", cascade="all, delete-orphan")
 
     __table_args__ = (
         # Add GiST index for faster spatial queries

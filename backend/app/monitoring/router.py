@@ -20,7 +20,8 @@ from .schemas import (
     DroneStatus,
     MonitoringDashboard,
     WebSocketMessage,
-    ZoneDroneCount
+    ZoneDroneCount,
+    TelemetryDataCreate
 )
 from ..utils.logger import setup_logger
 
@@ -591,7 +592,7 @@ async def get_drones_at_location(
 
 
 async def process_telemetry_data(
-    telemetry: TelemetryDataSchema,
+    telemetry: TelemetryDataCreate,
     db: AsyncSession
 ) -> TelemetryData:
     """Process incoming telemetry data and update current position"""
@@ -613,13 +614,22 @@ async def process_telemetry_data(
             await db.commit()
             await db.refresh(db_telemetry)
             return db_telemetry
-        
+
+
         # Update or create current position
         current_pos = await db.execute(
             select(CurrentDronePosition)
             .where(CurrentDronePosition.drone_id == telemetry.drone_id)
         )
         current_pos = current_pos.scalar_one_or_none()
+        
+        # Get old hex cell if drone is moving from one hex to another
+        old_hex_cell = None
+        if current_pos and current_pos.hex_cell_id != hex_cell.id:
+            old_hex_cell = await db.execute(
+                select(HexGridCell).where(HexGridCell.id == current_pos.hex_cell_id)
+            )
+            old_hex_cell = old_hex_cell.scalar_one_or_none()
         
         if current_pos:
             # Update existing position
@@ -647,6 +657,23 @@ async def process_telemetry_data(
                 status=telemetry.status
             )
             db.add(current_pos)
+            # Increment drone count for new hex cell
+            if hex_cell.drones_count:
+                hex_cell.drones_count += 1
+            else:
+                hex_cell.drones_count = 1
+        
+        # Update drone counts if drone moved between hex cells
+        if old_hex_cell:
+            if old_hex_cell.drones_count:
+                old_hex_cell.drones_count-= 1
+            else:
+                old_hex_cell.drones_count = 0
+
+            if hex_cell.drones_count:
+                hex_cell.drones_count += 1
+            else:
+                hex_cell.drones_count = 1
         
         await db.commit()
         await db.refresh(db_telemetry)
@@ -705,7 +732,7 @@ async def get_zone_drones(
 
 @router.post("/telemetry/process", response_model=TelemetryDataSchema)
 async def process_telemetry(
-    telemetry: TelemetryDataSchema,
+    telemetry: TelemetryDataCreate,
     db: AsyncSession = Depends(get_db)
 ):
     return await process_telemetry_data(telemetry, db)

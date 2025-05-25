@@ -8,7 +8,6 @@ import uuid
 class WaypointBase(BaseModel):
     latitude: float
     longitude: float
-    altitude: float
 
 
 class WaypointCreate(WaypointBase):
