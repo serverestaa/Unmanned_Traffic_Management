@@ -19,7 +19,8 @@ export default function MyRequestsTable(){
         {
           accessorKey: 'is_active',
           header: 'Active',
-          cell: ({ row }) => {
+        //   eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cell: ({ row } : {row: any}) => {
             const data  = row.original;
             if (data.status==="approved"){
                 return <Button onClick={startFlight}>
@@ -31,7 +32,7 @@ export default function MyRequestsTable(){
         }
     ]
 
-    const {data=[], isLoading} = useGetMyFlightRequestsQuery();
+    const {data=[]} = useGetMyFlightRequestsQuery();
 
     console.log(data);
     const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel()});
