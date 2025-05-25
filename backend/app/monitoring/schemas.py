@@ -1,6 +1,6 @@
 # app/monitoring/schemas.py
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 import uuid
 
@@ -114,3 +114,32 @@ class ZoneDroneCount(BaseModel):
     hex_cell: HexGridCell
     drone_count: int
     drones: List[CurrentDronePosition]
+
+
+class RestrictedZoneInfo(BaseModel):
+    id: int
+    name: str
+    zone_type: str
+    min_altitude: float
+    max_altitude: float
+    geometry: Optional[dict] = None
+
+
+class RestrictedZoneAlert(BaseModel):
+    alert_id: int
+    drone_id: int
+    zone_id: int
+    zone_name: str
+    zone_type: str
+    severity: str
+    message: str
+    latitude: float
+    longitude: float
+    altitude: float
+    timestamp: str
+
+
+class RestrictedZoneWebSocketMessage(BaseModel):
+    type: str  # "restricted_zone_alert", "restricted_zones_info", "heartbeat"
+    data: Optional[Union[List[RestrictedZoneAlert], List[RestrictedZoneInfo]]] = None
+    timestamp: Optional[str] = None

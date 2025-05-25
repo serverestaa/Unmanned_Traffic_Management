@@ -1,5 +1,5 @@
 # app/monitoring/router.py
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func
@@ -58,10 +58,63 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def check_restricted_zone_violation(
+        drone_id: int,
+        latitude: float,
+        longitude: float,
+        altitude: float,
+        db: AsyncSession
+) -> Optional[dict]:
+    """
+    Check if drone position violates any restricted zones.
+    Returns violation details if found, None otherwise.
+    """
+    try:
+        # Import here to avoid circular imports
+        from ..flights.models import (RestrictedZone)
+        from geoalchemy2.functions import ST_Contains, ST_MakePoint
+
+        # Check if the drone's position is within any active restricted zone
+        point = ST_MakePoint(longitude, latitude)
+
+        # Query for restricted zones that contain this point
+        result = await db.execute(
+            select(RestrictedZone)
+            .where(
+                and_(
+                    RestrictedZone.is_active == True,
+                    ST_Contains(RestrictedZone.geometry, point),
+                    RestrictedZone.min_altitude <= altitude,
+                    RestrictedZone.max_altitude >= altitude
+                )
+            )
+        )
+
+        restricted_zone = result.scalar_one_or_none()
+
+        if restricted_zone:
+            return {
+                "zone_id": restricted_zone.id,
+                "zone_name": restricted_zone.name,
+                "zone_type": restricted_zone.zone_type,
+                "severity": "high" if restricted_zone.zone_type == "no_fly" else "medium",
+                "message": f"Drone entered restricted zone: {restricted_zone.name}"
+            }
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error checking restricted zone: {str(e)}", exc_info=True)
+        return None
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
+        # Store last known positions to detect zone entries
+        last_positions = {}
+
         while True:
             # Keep connection alive and send periodic updates
             await asyncio.sleep(1)
@@ -80,6 +133,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 if recent_telemetry:
                     # Group by drone_id and get latest for each
                     drone_telemetry = {}
+                    restricted_zone_alerts = []
+
                     for t in recent_telemetry:
                         if t.drone_id not in drone_telemetry:
                             drone_telemetry[t.drone_id] = {
@@ -95,18 +150,145 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "flight_request_id": t.flight_request_id
                             }
 
+                            # Check for restricted zone violations
+                            violation = await check_restricted_zone_violation(
+                                t.drone_id,
+                                t.latitude,
+                                t.longitude,
+                                t.altitude,
+                                db
+                            )
+
+                            if violation:
+                                # Check if this is a new violation (drone wasn't in zone before)
+                                last_pos = last_positions.get(t.drone_id)
+                                is_new_violation = True
+
+                                if last_pos:
+                                    # Check if drone was already in this zone
+                                    last_violation = await check_restricted_zone_violation(
+                                        t.drone_id,
+                                        last_pos['latitude'],
+                                        last_pos['longitude'],
+                                        last_pos['altitude'],
+                                        db
+                                    )
+                                    if last_violation and last_violation['zone_id'] == violation['zone_id']:
+                                        is_new_violation = False
+
+                                if is_new_violation:
+                                    # Create alert in database
+                                    alert = Alert(
+                                        drone_id=t.drone_id,
+                                        flight_request_id=t.flight_request_id,
+                                        alert_type="restricted_zone_violation",
+                                        severity=violation['severity'],
+                                        message=violation['message'],
+                                        latitude=t.latitude,
+                                        longitude=t.longitude,
+                                        altitude=t.altitude
+                                    )
+                                    db.add(alert)
+                                    await db.commit()
+                                    await db.refresh(alert)
+
+                                    # Add to alerts list
+                                    restricted_zone_alerts.append({
+                                        "alert_id": alert.id,
+                                        "drone_id": t.drone_id,
+                                        "zone_id": violation['zone_id'],
+                                        "zone_name": violation['zone_name'],
+                                        "zone_type": violation['zone_type'],
+                                        "severity": violation['severity'],
+                                        "message": violation['message'],
+                                        "latitude": t.latitude,
+                                        "longitude": t.longitude,
+                                        "altitude": t.altitude,
+                                        "timestamp": datetime.utcnow().isoformat()
+                                    })
+
+                            # Update last known position
+                            last_positions[t.drone_id] = {
+                                'latitude': t.latitude,
+                                'longitude': t.longitude,
+                                'altitude': t.altitude
+                            }
+
                     # Send telemetry update
                     await websocket.send_text(json.dumps({
                         "type": "telemetry_update",
                         "data": list(drone_telemetry.values())
                     }))
 
+                    # Send restricted zone alerts if any
+                    if restricted_zone_alerts:
+                        await websocket.send_text(json.dumps({
+                            "type": "restricted_zone_alert",
+                            "data": restricted_zone_alerts
+                        }))
+
+                        # Also broadcast to all connected clients
+                        await manager.broadcast({
+                            "type": "restricted_zone_alert",
+                            "data": restricted_zone_alerts
+                        })
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}", exc_info=True)
         manager.disconnect(websocket)
 
+
+@router.websocket("/ws/restricted-zones")
+async def restricted_zone_monitoring_websocket(
+        websocket: WebSocket,
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    Dedicated WebSocket endpoint for monitoring restricted zone violations.
+    This endpoint only sends alerts when drones enter restricted zones.
+    """
+    await manager.connect(websocket)
+
+    try:
+        # Send initial restricted zones data
+        from ..flights.models import RestrictedZone
+
+        zones_result = await db.execute(
+            select(RestrictedZone).where(RestrictedZone.is_active == True)
+        )
+        zones = zones_result.scalars().all()
+
+        # Send restricted zones info
+        await websocket.send_text(json.dumps({
+            "type": "restricted_zones_info",
+            "data": [
+                {
+                    "id": zone.id,
+                    "name": zone.name,
+                    "zone_type": zone.zone_type,
+                    "min_altitude": zone.min_altitude,
+                    "max_altitude": zone.max_altitude,
+                    "geometry": zone.geometry_geojson if hasattr(zone, 'geometry_geojson') else None
+                }
+                for zone in zones
+            ]
+        }))
+
+        # Keep connection alive
+        while True:
+            await asyncio.sleep(30)  # Heartbeat every 30 seconds
+            await websocket.send_text(json.dumps({
+                "type": "heartbeat",
+                "timestamp": datetime.utcnow().isoformat()
+            }))
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Restricted zone WebSocket error: {e}", exc_info=True)
+        manager.disconnect(websocket)
 
 @router.get("/dashboard", response_model=MonitoringDashboard)
 async def get_monitoring_dashboard(
