@@ -6,7 +6,7 @@ import {
   Plane,
   MapIcon,
   UsersRound,
-} from 'lucide-react';
+} from 'lucide-react'
 
 import {
   Sidebar,
@@ -17,25 +17,36 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from '@/components/ui/sidebar';
-import { TypographyH3 } from '@/components/ui/typoh3';
-import { useAppSelector } from '@/store/hooks';
+} from '@/components/ui/sidebar'
+import { TypographyH3 } from '@/components/ui/typoh3'
+import { useAppSelector } from '@/store/hooks'
+
+const guestItems = [
+  { title: 'Home', url: '/', icon: Home },
+  { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+]
 
 const pilotItems = [
   { title: 'Home', url: '/', icon: Home },
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'My drones', url: '/my-drones', icon: Plane },
-];
+]
 
 const adminItems = [
   { title: 'Online map', url: '/admin/map', icon: MapIcon },
   { title: 'All drones', url: '/admin/drones', icon: Plane },
   { title: 'Users', url: '/admin/users', icon: UsersRound },
-];
+]
 
 export function AppSidebar() {
-  const { current } = useAppSelector((s) => s.user); 
-  const nav = current?.role === 'admin' ? adminItems : pilotItems;
+  const { current } = useAppSelector((s) => s.user)
+
+  // If no user → only guestItems; otherwise admin or pilot
+  const nav = !current
+    ? guestItems
+    : current.role === 'admin'
+    ? adminItems
+    : pilotItems
 
   return (
     <Sidebar>
@@ -62,5 +73,5 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>
-  );
+  )
 }
