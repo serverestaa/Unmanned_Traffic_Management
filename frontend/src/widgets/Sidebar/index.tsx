@@ -35,12 +35,12 @@ const pilotItems = [
 const adminItems = [
   { title: 'Online map', url: '/admin/map', icon: MapIcon },
   { title: 'All drones', url: '/admin/drones', icon: Plane },
+  { title: 'Requests', url: '/admin/requests', icon: UsersRound }
 ]
 
 export function AppSidebar() {
   const { current } = useAppSelector((s) => s.user)
 
-  // If no user → only guestItems; otherwise admin or pilot
   const nav = !current
     ? guestItems
     : current.role === 'admin'
@@ -50,7 +50,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <TypographyH3 className="pt-1">Decedron</TypographyH3>
+        <TypographyH3 className="pt-1">Decedrone</TypographyH3>
       </SidebarHeader>
 
       <SidebarContent>

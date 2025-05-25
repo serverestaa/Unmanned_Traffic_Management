@@ -268,10 +268,9 @@ export const DroneDataTable: React.FC<Props> = ({ data, columns }) => {
                     name="weight"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Weight (kg)</FormLabel>
+                        <FormLabel>Weight (g)</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
                             {...field}
                             onChange={(e) => field.onChange(+e.target.value)}
                           />

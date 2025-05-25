@@ -2,17 +2,17 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, desc, func
+from sqlalchemy import select, and_, desc, func, delete
 from datetime import datetime, timedelta
 import json
 import asyncio
 import h3
 
-from ..database import get_db
+from ..database import get_db, AsyncSessionLocal
 from ..auth.utils import get_current_active_user
 from ..auth.models import User
 from ..drones.models import Drone
-from ..flights.models import FlightRequest
+from ..flights.models import FlightRequest, RestrictedZone
 from .models import TelemetryData, Alert, HexGridCell, CurrentDronePosition
 from .schemas import (
     TelemetryData as TelemetryDataSchema,
@@ -24,9 +24,9 @@ from .schemas import (
     TelemetryDataCreate
 )
 from ..utils.logger import setup_logger
+from ..utils.geospatial import point_in_circle
 
 router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
-
 logger = setup_logger("utm.monitoring")
 
 
@@ -71,36 +71,33 @@ async def check_restricted_zone_violation(
     Returns violation details if found, None otherwise.
     """
     try:
-        # Import here to avoid circular imports
-        from ..flights.models import (RestrictedZone)
-        from geoalchemy2.functions import ST_Contains, ST_MakePoint
-
-        # Check if the drone's position is within any active restricted zone
-        point = ST_MakePoint(longitude, latitude)
-
-        # Query for restricted zones that contain this point
+        # Check all active restricted zones
         result = await db.execute(
             select(RestrictedZone)
-            .where(
-                and_(
-                    RestrictedZone.is_active == True,
-                    ST_Contains(RestrictedZone.geometry, point),
-                    RestrictedZone.min_altitude <= altitude,
-                    RestrictedZone.max_altitude >= altitude
-                )
-            )
+            .where(RestrictedZone.is_active == True)
         )
+        zones = result.scalars().all()
 
-        restricted_zone = result.scalar_one_or_none()
-
-        if restricted_zone:
-            return {
-                "zone_id": restricted_zone.id,
-                "zone_name": restricted_zone.name,
-                "zone_type": restricted_zone.zone_type,
-                "severity": "high" if restricted_zone.zone_type == "no_fly" else "medium",
-                "message": f"Drone entered restricted zone: {restricted_zone.name}"
-            }
+        for zone in zones:
+            # Check if point is within zone radius
+            if point_in_circle(latitude, longitude, zone.center_lat, zone.center_lng, zone.radius):
+                # Check altitude restrictions
+                if altitude > zone.max_altitude:
+                    return {
+                        "zone_id": zone.id,
+                        "zone_name": zone.name,
+                        "zone_type": "restricted",
+                        "severity": "high",
+                        "message": f"Drone entered restricted zone: {zone.name} (altitude: {altitude}m exceeds max: {zone.max_altitude}m)"
+                    }
+                else:
+                    return {
+                        "zone_id": zone.id,
+                        "zone_name": zone.name,
+                        "zone_type": "restricted",
+                        "severity": "medium",
+                        "message": f"Drone entered restricted zone: {zone.name}"
+                    }
 
         return None
 
@@ -120,74 +117,92 @@ async def websocket_endpoint(websocket: WebSocket):
             # Keep connection alive and send periodic updates
             await asyncio.sleep(1)
 
-            # Get latest telemetry data
+            # Get current drone positions instead of telemetry for efficiency
             async with AsyncSessionLocal() as db:
-                # Get recent telemetry (last 10 seconds)
-                recent_time = datetime.utcnow() - timedelta(seconds=10)
+                # Get all current drone positions with drone info
                 result = await db.execute(
-                    select(TelemetryData)
-                    .filter(TelemetryData.timestamp > recent_time)
-                    .order_by(desc(TelemetryData.timestamp))
+                    select(CurrentDronePosition, Drone)
+                    .join(Drone, CurrentDronePosition.drone_id == Drone.id)
+                    .where(CurrentDronePosition.status.in_(["airborne", "hovering"]))
                 )
-                recent_telemetry = result.scalars().all()
+                current_positions = result.all()
 
-                if recent_telemetry:
-                    # Group by drone_id and get latest for each
+                if current_positions:
                     drone_telemetry = {}
                     restricted_zone_alerts = []
 
-                    for t in recent_telemetry:
-                        if t.drone_id not in drone_telemetry:
-                            drone_telemetry[t.drone_id] = {
-                                "drone_id": t.drone_id,
-                                "latitude": t.latitude,
-                                "longitude": t.longitude,
-                                "altitude": t.altitude,
-                                "speed": t.speed,
-                                "heading": t.heading,
-                                "battery_level": t.battery_level,
-                                "status": t.status,
-                                "timestamp": t.timestamp.isoformat(),
-                                "flight_request_id": t.flight_request_id
-                            }
+                    for position, drone in current_positions:
+                        # Check if position was updated recently (within last 30 seconds)
+                        if (datetime.utcnow() - position.last_update).total_seconds() > 30:
+                            continue
 
-                            # Check for restricted zone violations
-                            violation = await check_restricted_zone_violation(
-                                t.drone_id,
-                                t.latitude,
-                                t.longitude,
-                                t.altitude,
-                                db
-                            )
+                        drone_telemetry[position.drone_id] = {
+                            "drone_id": position.drone_id,
+                            "drone_info": {
+                                "brand": drone.brand,
+                                "model": drone.model,
+                                "serial_number": drone.serial_number
+                            },
+                            "latitude": position.latitude,
+                            "longitude": position.longitude,
+                            "altitude": position.altitude,
+                            "speed": position.speed,
+                            "heading": position.heading,
+                            "battery_level": position.battery_level,
+                            "status": position.status,
+                            "timestamp": position.last_update.isoformat(),
+                            "flight_request_id": position.flight_request_id
+                        }
 
-                            if violation:
-                                # Check if this is a new violation (drone wasn't in zone before)
-                                last_pos = last_positions.get(t.drone_id)
-                                is_new_violation = True
+                        # Check for restricted zone violations
+                        violation = await check_restricted_zone_violation(
+                            position.drone_id,
+                            position.latitude,
+                            position.longitude,
+                            position.altitude,
+                            db
+                        )
 
-                                if last_pos:
-                                    # Check if drone was already in this zone
-                                    last_violation = await check_restricted_zone_violation(
-                                        t.drone_id,
-                                        last_pos['latitude'],
-                                        last_pos['longitude'],
-                                        last_pos['altitude'],
-                                        db
+                        if violation:
+                            # Check if this is a new violation
+                            last_pos = last_positions.get(position.drone_id)
+                            is_new_violation = True
+
+                            if last_pos:
+                                last_violation = await check_restricted_zone_violation(
+                                    position.drone_id,
+                                    last_pos['latitude'],
+                                    last_pos['longitude'],
+                                    last_pos['altitude'],
+                                    db
+                                )
+                                if last_violation and last_violation['zone_id'] == violation['zone_id']:
+                                    is_new_violation = False
+
+                            if is_new_violation:
+                                # Check if alert already exists
+                                existing_alert = await db.execute(
+                                    select(Alert)
+                                    .where(
+                                        and_(
+                                            Alert.drone_id == position.drone_id,
+                                            Alert.alert_type == "restricted_zone_violation",
+                                            Alert.is_resolved == False,
+                                            Alert.created_at > datetime.utcnow() - timedelta(minutes=5)
+                                        )
                                     )
-                                    if last_violation and last_violation['zone_id'] == violation['zone_id']:
-                                        is_new_violation = False
-
-                                if is_new_violation:
+                                )
+                                if not existing_alert.scalar_one_or_none():
                                     # Create alert in database
                                     alert = Alert(
-                                        drone_id=t.drone_id,
-                                        flight_request_id=t.flight_request_id,
+                                        drone_id=position.drone_id,
+                                        flight_request_id=position.flight_request_id,
                                         alert_type="restricted_zone_violation",
                                         severity=violation['severity'],
                                         message=violation['message'],
-                                        latitude=t.latitude,
-                                        longitude=t.longitude,
-                                        altitude=t.altitude
+                                        latitude=position.latitude,
+                                        longitude=position.longitude,
+                                        altitude=position.altitude
                                     )
                                     db.add(alert)
                                     await db.commit()
@@ -196,30 +211,31 @@ async def websocket_endpoint(websocket: WebSocket):
                                     # Add to alerts list
                                     restricted_zone_alerts.append({
                                         "alert_id": alert.id,
-                                        "drone_id": t.drone_id,
+                                        "drone_id": position.drone_id,
                                         "zone_id": violation['zone_id'],
                                         "zone_name": violation['zone_name'],
                                         "zone_type": violation['zone_type'],
                                         "severity": violation['severity'],
                                         "message": violation['message'],
-                                        "latitude": t.latitude,
-                                        "longitude": t.longitude,
-                                        "altitude": t.altitude,
+                                        "latitude": position.latitude,
+                                        "longitude": position.longitude,
+                                        "altitude": position.altitude,
                                         "timestamp": datetime.utcnow().isoformat()
                                     })
 
-                            # Update last known position
-                            last_positions[t.drone_id] = {
-                                'latitude': t.latitude,
-                                'longitude': t.longitude,
-                                'altitude': t.altitude
-                            }
+                        # Update last known position
+                        last_positions[position.drone_id] = {
+                            'latitude': position.latitude,
+                            'longitude': position.longitude,
+                            'altitude': position.altitude
+                        }
 
                     # Send telemetry update
-                    await websocket.send_text(json.dumps({
-                        "type": "telemetry_update",
-                        "data": list(drone_telemetry.values())
-                    }))
+                    if drone_telemetry:
+                        await websocket.send_text(json.dumps({
+                            "type": "telemetry_update",
+                            "data": list(drone_telemetry.values())
+                        }))
 
                     # Send restricted zone alerts if any
                     if restricted_zone_alerts:
@@ -234,6 +250,19 @@ async def websocket_endpoint(websocket: WebSocket):
                             "data": restricted_zone_alerts
                         })
 
+                # Clean up stale positions (older than 5 minutes)
+                stale_time = datetime.utcnow() - timedelta(minutes=5)
+                await db.execute(
+                    delete(CurrentDronePosition)
+                    .where(
+                        and_(
+                            CurrentDronePosition.last_update < stale_time,
+                            CurrentDronePosition.status.in_(["landed", "emergency", "disconnected"])
+                        )
+                    )
+                )
+                await db.commit()
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
@@ -241,55 +270,198 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-@router.websocket("/ws/restricted-zones")
-async def restricted_zone_monitoring_websocket(
-        websocket: WebSocket,
+async def process_telemetry_data(
+        telemetry: TelemetryDataCreate,
+        db: AsyncSession
+) -> TelemetryData:
+    """Process incoming telemetry data and update current position"""
+    try:
+        # Create telemetry record
+        db_telemetry = TelemetryData(**telemetry.model_dump())
+        db.add(db_telemetry)
+
+        # Calculate H3 index for current position
+        h3_index = h3.geo_to_h3(telemetry.latitude, telemetry.longitude, 8)
+
+        # Get or create hex cell
+        hex_cell = await db.execute(
+            select(HexGridCell).where(HexGridCell.h3_index == h3_index)
+        )
+        hex_cell = hex_cell.scalar_one_or_none()
+
+        if not hex_cell:
+            # Create new hex cell
+            center = h3.h3_to_geo(h3_index)
+            hex_cell = HexGridCell(
+                h3_index=h3_index,
+                center_lat=center[0],
+                center_lng=center[1]
+            )
+            db.add(hex_cell)
+            await db.flush()
+
+        # Get current position
+        current_pos = await db.execute(
+            select(CurrentDronePosition)
+            .where(CurrentDronePosition.drone_id == telemetry.drone_id)
+        )
+        current_pos = current_pos.scalar_one_or_none()
+
+        if current_pos:
+            # Check if hex cell changed
+            old_hex_cell_id = current_pos.hex_cell_id
+
+            # Update position
+            current_pos.hex_cell_id = hex_cell.id
+            current_pos.latitude = telemetry.latitude
+            current_pos.longitude = telemetry.longitude
+            current_pos.altitude = telemetry.altitude
+            current_pos.speed = telemetry.speed or 0.0
+            current_pos.heading = telemetry.heading or 0.0
+            current_pos.battery_level = telemetry.battery_level or 100.0
+            current_pos.status = telemetry.status or "airborne"
+            current_pos.flight_request_id = telemetry.flight_request_id
+            current_pos.last_update = datetime.utcnow()
+
+            # Log hex cell transition
+            if old_hex_cell_id != hex_cell.id:
+                logger.info(f"Drone {telemetry.drone_id} moved from hex cell {old_hex_cell_id} to {hex_cell.id}")
+
+                # No need to manually delete anything from the old hex cell
+                # The CurrentDronePosition record is already updated with the new hex_cell_id
+                # and the database relationships will handle this automatically
+        else:
+            # Create new position
+            current_pos = CurrentDronePosition(
+                drone_id=telemetry.drone_id,
+                flight_request_id=telemetry.flight_request_id,
+                hex_cell_id=hex_cell.id,
+                latitude=telemetry.latitude,
+                longitude=telemetry.longitude,
+                altitude=telemetry.altitude,
+                speed=telemetry.speed or 0.0,
+                heading=telemetry.heading or 0.0,
+                battery_level=telemetry.battery_level or 100.0,
+                status=telemetry.status or "airborne"
+            )
+            db.add(current_pos)
+            logger.info(f"Created new position for drone {telemetry.drone_id} in hex cell {hex_cell.id}")
+
+        # Check for alerts
+        violation = await check_restricted_zone_violation(
+            telemetry.drone_id,
+            telemetry.latitude,
+            telemetry.longitude,
+            telemetry.altitude,
+            db
+        )
+
+        if violation:
+            # Check if alert already exists
+            existing_alert = await db.execute(
+                select(Alert)
+                .where(
+                    and_(
+                        Alert.drone_id == telemetry.drone_id,
+                        Alert.alert_type == "restricted_zone_violation",
+                        Alert.is_resolved == False,
+                        Alert.created_at > datetime.utcnow() - timedelta(minutes=5)
+                    )
+                )
+            )
+            if not existing_alert.scalar_one_or_none():
+                alert = Alert(
+                    drone_id=telemetry.drone_id,
+                    flight_request_id=telemetry.flight_request_id,
+                    alert_type="restricted_zone_violation",
+                    severity=violation['severity'],
+                    message=violation['message'],
+                    latitude=telemetry.latitude,
+                    longitude=telemetry.longitude,
+                    altitude=telemetry.altitude
+                )
+                db.add(alert)
+
+                # Broadcast alert
+                await manager.broadcast({
+                    "type": "restricted_zone_alert",
+                    "data": [{
+                        "drone_id": telemetry.drone_id,
+                        "zone_name": violation['zone_name'],
+                        "severity": violation['severity'],
+                        "message": violation['message'],
+                        "latitude": telemetry.latitude,
+                        "longitude": telemetry.longitude,
+                        "altitude": telemetry.altitude,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }]
+                })
+
+        # Check for low battery alert
+        if telemetry.battery_level and telemetry.battery_level < 20:
+            existing_battery_alert = await db.execute(
+                select(Alert)
+                .where(
+                    and_(
+                        Alert.drone_id == telemetry.drone_id,
+                        Alert.alert_type == "low_battery",
+                        Alert.is_resolved == False,
+                        Alert.created_at > datetime.utcnow() - timedelta(minutes=10)
+                    )
+                )
+            )
+            if not existing_battery_alert.scalar_one_or_none():
+                battery_alert = Alert(
+                    drone_id=telemetry.drone_id,
+                    flight_request_id=telemetry.flight_request_id,
+                    alert_type="low_battery",
+                    severity="high" if telemetry.battery_level < 10 else "medium",
+                    message=f"Low battery: {telemetry.battery_level}%",
+                    latitude=telemetry.latitude,
+                    longitude=telemetry.longitude,
+                    altitude=telemetry.altitude
+                )
+                db.add(battery_alert)
+
+        await db.commit()
+        await db.refresh(db_telemetry)
+
+        # Broadcast telemetry update
+        await manager.broadcast({
+            "type": "telemetry_update",
+            "data": [{
+                "drone_id": telemetry.drone_id,
+                "latitude": telemetry.latitude,
+                "longitude": telemetry.longitude,
+                "altitude": telemetry.altitude,
+                "speed": telemetry.speed,
+                "heading": telemetry.heading,
+                "battery_level": telemetry.battery_level,
+                "status": telemetry.status,
+                "timestamp": db_telemetry.timestamp.isoformat(),
+                "flight_request_id": telemetry.flight_request_id
+            }]
+        })
+
+        return db_telemetry
+
+    except Exception as e:
+        logger.error(f"Error processing telemetry data: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error processing telemetry data"
+        )
+
+
+@router.post("/telemetry", response_model=TelemetryDataSchema)
+async def submit_telemetry(
+        telemetry: TelemetryDataCreate,
         db: AsyncSession = Depends(get_db)
 ):
-    """
-    Dedicated WebSocket endpoint for monitoring restricted zone violations.
-    This endpoint only sends alerts when drones enter restricted zones.
-    """
-    await manager.connect(websocket)
+    """Submit telemetry data for a drone"""
+    return await process_telemetry_data(telemetry, db)
 
-    try:
-        # Send initial restricted zones data
-        from ..flights.models import RestrictedZone
-
-        zones_result = await db.execute(
-            select(RestrictedZone).where(RestrictedZone.is_active == True)
-        )
-        zones = zones_result.scalars().all()
-
-        # Send restricted zones info
-        await websocket.send_text(json.dumps({
-            "type": "restricted_zones_info",
-            "data": [
-                {
-                    "id": zone.id,
-                    "name": zone.name,
-                    "zone_type": zone.zone_type,
-                    "min_altitude": zone.min_altitude,
-                    "max_altitude": zone.max_altitude,
-                    "geometry": zone.geometry_geojson if hasattr(zone, 'geometry_geojson') else None
-                }
-                for zone in zones
-            ]
-        }))
-
-        # Keep connection alive
-        while True:
-            await asyncio.sleep(30)  # Heartbeat every 30 seconds
-            await websocket.send_text(json.dumps({
-                "type": "heartbeat",
-                "timestamp": datetime.utcnow().isoformat()
-            }))
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"Restricted zone WebSocket error: {e}", exc_info=True)
-        manager.disconnect(websocket)
 
 @router.get("/dashboard", response_model=MonitoringDashboard)
 async def get_monitoring_dashboard(
@@ -309,7 +481,7 @@ async def get_monitoring_dashboard(
     )
     active_flights = active_flights_result.scalar()
 
-    # Get total drones count (user's drones or all if admin)
+    # Get total drones count
     if current_user.role == "admin":
         total_drones_result = await db.execute(select(func.count(Drone.id)))
     else:
@@ -324,30 +496,22 @@ async def get_monitoring_dashboard(
     )
     active_alerts = active_alerts_result.scalar()
 
-    # Get drone statuses
+    # Get drone statuses from current positions
     drone_statuses = []
 
-    # Get drones with recent telemetry (last 5 minutes)
-    recent_time = datetime.utcnow() - timedelta(minutes=5)
-
     if current_user.role == "admin":
-        drones_query = select(Drone)
-    else:
-        drones_query = select(Drone).filter(Drone.owner_id == current_user.id)
-
-    drones_result = await db.execute(drones_query)
-    drones = drones_result.scalars().all()
-
-    for drone in drones:
-        # Get latest telemetry
-        telemetry_result = await db.execute(
-            select(TelemetryData)
-            .filter(TelemetryData.drone_id == drone.id)
-            .order_by(desc(TelemetryData.timestamp))
-            .limit(1)
+        positions_query = select(CurrentDronePosition, Drone).join(
+            Drone, CurrentDronePosition.drone_id == Drone.id
         )
-        latest_telemetry = telemetry_result.scalar_one_or_none()
+    else:
+        positions_query = select(CurrentDronePosition, Drone).join(
+            Drone, CurrentDronePosition.drone_id == Drone.id
+        ).filter(Drone.owner_id == current_user.id)
 
+    positions_result = await db.execute(positions_query)
+    positions = positions_result.all()
+
+    for position, drone in positions:
         # Get active alerts for this drone
         alerts_result = await db.execute(
             select(Alert)
@@ -356,11 +520,7 @@ async def get_monitoring_dashboard(
         )
         drone_alerts = alerts_result.scalars().all()
 
-        # Get current flight request if any
-        current_flight = None
-        if latest_telemetry and latest_telemetry.flight_request_id:
-            current_flight = latest_telemetry.flight_request_id
-
+        # Create drone status
         drone_status = DroneStatus(
             drone_id=drone.id,
             drone_info={
@@ -368,11 +528,23 @@ async def get_monitoring_dashboard(
                 "brand": drone.brand,
                 "model": drone.model,
                 "serial_number": drone.serial_number,
-                "owner_id": drone.owner_id
+                "owner_id": str(drone.owner_id)
             },
-            latest_telemetry=latest_telemetry,
+            latest_telemetry=TelemetryDataSchema(
+                id=0,  # Not from telemetry table
+                drone_id=position.drone_id,
+                flight_request_id=position.flight_request_id,
+                latitude=position.latitude,
+                longitude=position.longitude,
+                altitude=position.altitude,
+                speed=position.speed,
+                heading=position.heading,
+                battery_level=position.battery_level,
+                status=position.status,
+                timestamp=position.last_update
+            ),
             active_alerts=drone_alerts,
-            flight_request_id=current_flight
+            flight_request_id=position.flight_request_id
         )
         drone_statuses.append(drone_status)
 
@@ -382,6 +554,65 @@ async def get_monitoring_dashboard(
         active_alerts=active_alerts,
         drone_statuses=drone_statuses
     )
+
+
+@router.get("/zones/hex/{h3_index}", response_model=ZoneDroneCount)
+async def get_drones_in_hex(
+        h3_index: str,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """Get all drones currently in a specific hexagonal zone."""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can access zone monitoring"
+        )
+
+    try:
+        # Validate h3_index
+        if not h3.h3_is_valid(h3_index):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid H3 index"
+            )
+
+        # Get or create hex cell
+        hex_cell = await db.execute(
+            select(HexGridCell).where(HexGridCell.h3_index == h3_index)
+        )
+        hex_cell = hex_cell.scalar_one_or_none()
+
+        if not hex_cell:
+            center = h3.h3_to_geo(h3_index)
+            hex_cell = HexGridCell(
+                h3_index=h3_index,
+                center_lat=center[0],
+                center_lng=center[1]
+            )
+            db.add(hex_cell)
+            await db.commit()
+            await db.refresh(hex_cell)
+
+        # Get all drones in this hex cell
+        drones = await db.execute(
+            select(CurrentDronePosition)
+            .where(CurrentDronePosition.hex_cell_id == hex_cell.id)
+        )
+        drones = drones.scalars().all()
+
+        return ZoneDroneCount(
+            hex_cell=hex_cell,
+            drone_count=len(drones),
+            drones=drones
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting drones in hex {h3_index}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving zone data"
+        )
 
 
 @router.get("/telemetry/{drone_id}", response_model=List[TelemetryDataSchema])
@@ -465,7 +696,7 @@ async def resolve_alert(
             detail="Alert not found"
         )
 
-    # Check permissions (admin or drone owner)
+    # Check permissions
     if current_user.role != "admin":
         drone_result = await db.execute(select(Drone).filter(Drone.id == alert.drone_id))
         drone = drone_result.scalar_one()
@@ -494,69 +725,6 @@ async def resolve_alert(
     })
 
     return alert
-
-
-@router.get("/zones/hex/{h3_index}", response_model=ZoneDroneCount)
-async def get_drones_in_hex(
-    h3_index: str,
-    db: AsyncSession = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    """
-    Get all drones currently in a specific hexagonal zone.
-    The h3_index should be at resolution 8 (approximately 0.74 km² cells).
-    """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can access zone monitoring"
-        )
-
-    try:
-        # Validate h3_index
-        if not h3.h3_is_valid(h3_index):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid H3 index"
-            )
-
-        # Get hex cell
-        hex_cell = await db.execute(
-            select(HexGridCell).where(HexGridCell.h3_index == h3_index)
-        )
-        hex_cell = hex_cell.scalar_one_or_none()
-        
-        if not hex_cell:
-            # Create new hex cell if it doesn't exist
-            center = h3.h3_to_geo(h3_index)
-            hex_cell = HexGridCell(
-                h3_index=h3_index,
-                center_lat=center[0],
-                center_lng=center[1]
-            )
-            db.add(hex_cell)
-            await db.commit()
-            await db.refresh(hex_cell)
-
-        # Get all drones in this hex cell
-        drones = await db.execute(
-            select(CurrentDronePosition)
-            .where(CurrentDronePosition.hex_cell_id == hex_cell.id)
-        )
-        drones = drones.scalars().all()
-
-        return ZoneDroneCount(
-            hex_cell=hex_cell,
-            drone_count=len(drones),
-            drones=drones
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting drones in hex {h3_index}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error retrieving zone data"
-        )
 
 
 @router.get("/zones/latlng/{lat}/{lng}", response_model=ZoneDroneCount)
@@ -600,14 +768,14 @@ async def process_telemetry_data(
         # Create telemetry record
         db_telemetry = TelemetryData(**telemetry.model_dump())
         db.add(db_telemetry)
-        
+
         # Get hex cell for current position
         h3_index = h3.geo_to_h3(telemetry.latitude, telemetry.longitude, 8)
         hex_cell = await db.execute(
             select(HexGridCell).where(HexGridCell.h3_index == h3_index)
         )
         hex_cell = hex_cell.scalar_one_or_none()
-        
+
         if not hex_cell:
             logger.warning(f"No hex cell found for H3 index {h3_index}. Position may be outside Kazakhstan.")
             # Still create telemetry record but skip position update
@@ -622,7 +790,7 @@ async def process_telemetry_data(
             .where(CurrentDronePosition.drone_id == telemetry.drone_id)
         )
         current_pos = current_pos.scalar_one_or_none()
-        
+
         # Get old hex cell if drone is moving from one hex to another
         old_hex_cell = None
         if current_pos and current_pos.hex_cell_id != hex_cell.id:
@@ -630,7 +798,7 @@ async def process_telemetry_data(
                 select(HexGridCell).where(HexGridCell.id == current_pos.hex_cell_id)
             )
             old_hex_cell = old_hex_cell.scalar_one_or_none()
-        
+
         if current_pos:
             # Update existing position
             current_pos.hex_cell_id = hex_cell.id
@@ -662,7 +830,7 @@ async def process_telemetry_data(
                 hex_cell.drones_count += 1
             else:
                 hex_cell.drones_count = 1
-        
+
         # Update drone counts if drone moved between hex cells
         if old_hex_cell:
             if old_hex_cell.drones_count:

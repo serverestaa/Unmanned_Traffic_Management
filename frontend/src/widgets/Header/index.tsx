@@ -20,7 +20,7 @@ import { useAppSelector } from '@/store/hooks'
 /* ------------------------------------------------------------------ */
 
 const LABELS: Record<string, string> = {
-  '':        'Decedron',
+  '':        'Decedrone',
   dashboard: 'Dashboard',
   drones:    'My drones',
   signin:    'Sign in',
