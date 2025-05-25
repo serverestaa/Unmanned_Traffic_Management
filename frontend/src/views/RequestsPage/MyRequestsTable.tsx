@@ -19,7 +19,7 @@ export default function MyRequestsTable(){
         {
           accessorKey: 'is_active',
           header: 'Active',
-          cell: ({ row }) => {
+          cell: ({ row }:any) => {
             const data  = row.original;
             if (data.status==="approved"){
                 return <Button onClick={startFlight}>

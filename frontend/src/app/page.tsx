@@ -3,6 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   return (
@@ -45,6 +46,29 @@ export default function Home() {
             </li>
           </ol>
           <Separator />
+          <p className="text-red-700">
+            За нарушение правил использования воздушного пространства предусмотрен штраф в размере 10 МРП (39,3 тыс. тг) 
+            для физлиц или 20 МРП (78,6 тыс. тг) для юридических лиц. Возможна конфискация беспилотника.
+          </p>
+          <Separator />
+          {!localStorage.getItem('agreed_to_terms_and_services') && (
+            <div className="flex flex-col gap-4">
+              <label className="inline-flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  className="form-checkbox h-5 w-5 text-teal-600 transition duration-150 ease-in-out"
+                />
+                <span className="text-gray-700">Я прочитал и понимаю</span>
+              </label>
+              <Button className="w-32" onClick={()=>{
+                if (!localStorage.getItem('agreed_to_terms_and_services')){
+                  localStorage.setItem('agreed_to_terms_and_services', "true");
+                }
+              }}>
+                Согласится
+              </Button>
+            </div>
+          )}
           <p>
             Когда всё готово — крепко пристегнись, проверь дрон и управляй осторожно. Удачи в полётах! 🚁✨
           </p>
