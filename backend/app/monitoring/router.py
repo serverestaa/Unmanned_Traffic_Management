@@ -703,5 +703,13 @@ async def get_zone_drones(
     return zone_counts
 
 
+@router.post("/telemetry/process", response_model=TelemetryDataSchema)
+async def process_telemetry(
+    telemetry: TelemetryDataSchema,
+    db: AsyncSession = Depends(get_db)
+):
+    return await process_telemetry_data(telemetry, db)
+
+
 # Import here to avoid circular imports
 from ..database import AsyncSessionLocal
