@@ -172,6 +172,16 @@ async def create_flight_request(
     pilot_result = await db.execute(select(User).filter(User.id == db_flight_request.pilot_id))
     pilot = pilot_result.scalar_one()
 
+    # Convert waypoints to dictionaries with only the required fields
+    waypoints_data = [
+        {
+            "latitude": wp.latitude,
+            "longitude": wp.longitude,
+            "altitude": wp.altitude
+        }
+        for wp in waypoints
+    ]
+
     # Construct the response using model_dump() for SQLAlchemy models
     response_data = {
         "id": db_flight_request.id,
@@ -186,7 +196,7 @@ async def create_flight_request(
         "approved_by": db_flight_request.approved_by,
         "created_at": db_flight_request.created_at,
         "approved_at": db_flight_request.approved_at,
-        "waypoints": waypoints,
+        "waypoints": waypoints_data,
         "drone": {
             "id": drone.id,
             "brand": drone.brand,
