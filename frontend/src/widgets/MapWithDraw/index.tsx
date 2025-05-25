@@ -8,7 +8,7 @@ import {
   Polyline,
   InfoWindow
 } from '@react-google-maps/api';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useGetRestrictedZonesQuery,     
 } from '@/api/flights';
@@ -87,6 +87,14 @@ export default function MapWithDraw() {
     setPolys((old) => [...old, { id: `poly-${nextId.current++}`, path }]);
     p.setMap(null);
   }, []);
+
+
+
+  useEffect(()=>{
+    async function fetchDrones(){
+
+    }
+  },[]);
 
 
 
