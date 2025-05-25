@@ -22,7 +22,6 @@ const center = { lat: 51.1605, lng: 71.4704 };
 export default function OnlineMapAdmin() {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
-    libraries: ['drawing'],
   });
 
   /* data & mutations */

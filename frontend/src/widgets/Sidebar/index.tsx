@@ -4,8 +4,9 @@ import {
   Home,
   LayoutDashboard,
   Plane,
-  MapIcon,
+  HexagonIcon,
   UsersRound,
+  Laptop
 } from 'lucide-react'
 
 import {
@@ -33,7 +34,8 @@ const pilotItems = [
 ]
 
 const adminItems = [
-  { title: 'Online map', url: '/admin/map', icon: MapIcon },
+  { title: 'Restricted zones', url: '/admin/map', icon: HexagonIcon },
+  { title: 'Monitoring', url: '/admin/monitoring', icon: Laptop },
   { title: 'All drones', url: '/admin/drones', icon: Plane },
   { title: 'Requests', url: '/admin/requests', icon: UsersRound }
 ]
