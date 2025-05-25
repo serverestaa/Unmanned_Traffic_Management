@@ -45,6 +45,7 @@ type FormValues = z.infer<typeof schema>
 export default function MyDronesPage() {
   const { data = [], isLoading } = useGetMyDronesQuery()
   const [createDrone]            = useCreateDroneMutation()
+  const [open, setOpen] = useState(false)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
