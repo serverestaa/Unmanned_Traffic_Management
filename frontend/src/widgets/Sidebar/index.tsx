@@ -41,7 +41,6 @@ const adminItems = [
 export function AppSidebar() {
   const { current } = useAppSelector((s) => s.user)
 
-  // If no user → only guestItems; otherwise admin or pilot
   const nav = !current
     ? guestItems
     : current.role === 'admin'

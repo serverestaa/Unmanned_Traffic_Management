@@ -225,6 +225,10 @@ export const flightsApi = createApi({
     }),
     getAllFlightRequests: builder.query<FlightRequest[], void>({
       query: () => '/requests/all',
+      transformResponse: (resp: FlightRequest[]) =>
+        resp
+          .map((r) => ({ ...r, id: Number(r.id) }))  // if you need numeric IDs
+          .sort((a, b) => a.id - b.id),
       providesTags: ['FlightRequests'],
     }),
     getFlightRequest: builder.query<FlightRequest, number>({
