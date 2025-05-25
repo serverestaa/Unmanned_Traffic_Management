@@ -35,7 +35,6 @@ const pilotItems = [
 const adminItems = [
   { title: 'Online map', url: '/admin/map', icon: MapIcon },
   { title: 'All drones', url: '/admin/drones', icon: Plane },
-  { title: 'Users', url: '/admin/users', icon: UsersRound },
 ]
 
 export function AppSidebar() {
