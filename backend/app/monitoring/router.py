@@ -326,6 +326,10 @@ async def process_telemetry_data(
             # Log hex cell transition
             if old_hex_cell_id != hex_cell.id:
                 logger.info(f"Drone {telemetry.drone_id} moved from hex cell {old_hex_cell_id} to {hex_cell.id}")
+
+                # No need to manually delete anything from the old hex cell
+                # The CurrentDronePosition record is already updated with the new hex_cell_id
+                # and the database relationships will handle this automatically
         else:
             # Create new position
             current_pos = CurrentDronePosition(
@@ -723,69 +727,6 @@ async def resolve_alert(
     return alert
 
 
-@router.get("/zones/hex/{h3_index}", response_model=ZoneDroneCount)
-async def get_drones_in_hex(
-    h3_index: str,
-    db: AsyncSession = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    """
-    Get all drones currently in a specific hexagonal zone.
-    The h3_index should be at resolution 8 (approximately 0.74 km² cells).
-    """
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can access zone monitoring"
-        )
-
-    try:
-        # Validate h3_index
-        if not h3.h3_is_valid(h3_index):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid H3 index"
-            )
-
-        # Get hex cell
-        hex_cell = await db.execute(
-            select(HexGridCell).where(HexGridCell.h3_index == h3_index)
-        )
-        hex_cell = hex_cell.scalar_one_or_none()
-        
-        if not hex_cell:
-            # Create new hex cell if it doesn't exist
-            center = h3.h3_to_geo(h3_index)
-            hex_cell = HexGridCell(
-                h3_index=h3_index,
-                center_lat=center[0],
-                center_lng=center[1]
-            )
-            db.add(hex_cell)
-            await db.commit()
-            await db.refresh(hex_cell)
-
-        # Get all drones in this hex cell
-        drones = await db.execute(
-            select(CurrentDronePosition)
-            .where(CurrentDronePosition.hex_cell_id == hex_cell.id)
-        )
-        drones = drones.scalars().all()
-
-        return ZoneDroneCount(
-            hex_cell=hex_cell,
-            drone_count=len(drones),
-            drones=drones
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting drones in hex {h3_index}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error retrieving zone data"
-        )
-
-
 @router.get("/zones/latlng/{lat}/{lng}", response_model=ZoneDroneCount)
 async def get_drones_at_location(
     lat: float,
@@ -816,77 +757,6 @@ async def get_drones_at_location(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error retrieving zone data"
         )
-
-
-async def process_telemetry_data(
-    telemetry: TelemetryDataSchema,
-    db: AsyncSession
-) -> TelemetryData:
-    """Process incoming telemetry data and update current position"""
-    try:
-        # Create telemetry record
-        db_telemetry = TelemetryData(**telemetry.model_dump())
-        db.add(db_telemetry)
-        
-        # Get hex cell for current position
-        h3_index = h3.geo_to_h3(telemetry.latitude, telemetry.longitude, 8)
-        hex_cell = await db.execute(
-            select(HexGridCell).where(HexGridCell.h3_index == h3_index)
-        )
-        hex_cell = hex_cell.scalar_one_or_none()
-        
-        if not hex_cell:
-            logger.warning(f"No hex cell found for H3 index {h3_index}. Position may be outside Kazakhstan.")
-            # Still create telemetry record but skip position update
-            await db.commit()
-            await db.refresh(db_telemetry)
-            return db_telemetry
-        
-        # Update or create current position
-        current_pos = await db.execute(
-            select(CurrentDronePosition)
-            .where(CurrentDronePosition.drone_id == telemetry.drone_id)
-        )
-        current_pos = current_pos.scalar_one_or_none()
-        
-        if current_pos:
-            # Update existing position
-            current_pos.hex_cell_id = hex_cell.id
-            current_pos.latitude = telemetry.latitude
-            current_pos.longitude = telemetry.longitude
-            current_pos.altitude = telemetry.altitude
-            current_pos.speed = telemetry.speed
-            current_pos.heading = telemetry.heading
-            current_pos.battery_level = telemetry.battery_level
-            current_pos.status = telemetry.status
-            current_pos.flight_request_id = telemetry.flight_request_id
-        else:
-            # Create new position
-            current_pos = CurrentDronePosition(
-                drone_id=telemetry.drone_id,
-                flight_request_id=telemetry.flight_request_id,
-                hex_cell_id=hex_cell.id,
-                latitude=telemetry.latitude,
-                longitude=telemetry.longitude,
-                altitude=telemetry.altitude,
-                speed=telemetry.speed,
-                heading=telemetry.heading,
-                battery_level=telemetry.battery_level,
-                status=telemetry.status
-            )
-            db.add(current_pos)
-        
-        await db.commit()
-        await db.refresh(db_telemetry)
-        return db_telemetry
-        
-    except Exception as e:
-        logger.error(f"Error processing telemetry data: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error processing telemetry data"
-        )
-
 
 @router.get("/zone/drones", response_model=List[ZoneDroneCount])
 async def get_zone_drones(
@@ -933,7 +803,7 @@ async def get_zone_drones(
 
 @router.post("/telemetry/process", response_model=TelemetryDataSchema)
 async def process_telemetry(
-    telemetry: TelemetryDataSchema,
+    telemetry: TelemetryDataCreate,
     db: AsyncSession = Depends(get_db)
 ):
     return await process_telemetry_data(telemetry, db)
