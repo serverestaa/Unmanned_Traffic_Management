@@ -78,6 +78,8 @@ export const MapProvider = ({ children }: { children: ReactNode }) => {
         setStart(null);
         setEnd(null);
         setMode(null);
+        setPoints([]);
+        setCurrentDrone(undefined);
     };
 
     console.log(mode, startPosition, endPosition);

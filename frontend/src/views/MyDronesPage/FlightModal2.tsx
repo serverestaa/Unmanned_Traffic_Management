@@ -39,25 +39,40 @@ export default function FlightModal2({
   cancelFlight,
 }: any) {
 
-    const {currentDrone, points} = useMapContext();
+    const {currentDrone, points, clearSelection} = useMapContext();
+    const [createRequest] = useCreateFlightRequestMutation();
 
     const form = useForm({
         defaultValues: {
-            height: "",
-            startDateTime: "",
-            endDateTime: "",
+            max_altitude: "",
+            planned_start_time: "",
+            planned_end_time: "",
+            purpose: ""
         },
     });
+    console.log(currentDrone);
 
     function onSubmit(formData:any) {
+        formData.drone_id = currentDrone.id;
+        formData.pilot_id = currentDrone.owner_id;
+        formData.waypoints = points.map((point,index)=>{
+            return {latitude:point.lat, longitude:point.lng, sequence: index+1, altitude: formData.max_altitude}
+        });
+        console.log(formData);
+
+        const promise = createRequest(formData).unwrap();
         toast.promise(
-            useCreateFlightRequestMutation(formData),
+            promise,
             {
-              loading: 'Flight creation...',
-              success: ({data}) => {
-                return 'Flight created!!';
+              loading: 'Request sending...',
+              success: (data) => {
+                console.log(data);
+                return 'Request sent!';
               },
-              error: (err) => `Flight creation failed: ${err.data?.message || err.message}`,
+              error: (err) => {
+                console.log(err);
+                return `Request creation failed: ${err.data?.message || err.message}`
+              },
             }
         );
     };
@@ -72,7 +87,7 @@ export default function FlightModal2({
           <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 p-4">
                     <TypographyP>
-                        {`Drone: ${currentDrone}`}
+                        {`Drone id: ${currentDrone.id}`}
                     </TypographyP>
                     <TypographyP>
                         Points
@@ -88,12 +103,12 @@ export default function FlightModal2({
                     </ul>
                     <FormField
                         control={form.control}
-                        name="height"
+                        name="purpose"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Height</FormLabel>
+                            <FormLabel>Purpose</FormLabel>
                             <FormControl>
-                                <Input {...field} placeholder="Enter height" />
+                                <Input {...field} placeholder="Purpose" />
                             </FormControl>
                             <FormMessage />
                             </FormItem>
@@ -101,7 +116,20 @@ export default function FlightModal2({
                     />
                     <FormField
                         control={form.control}
-                        name="startDateTime"
+                        name="max_altitude"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Max Height</FormLabel>
+                            <FormControl>
+                                <Input {...field} placeholder="Enter max height" />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="planned_start_time"
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>Start Date & Time</FormLabel>
@@ -114,7 +142,7 @@ export default function FlightModal2({
                     />
                     <FormField
                         control={form.control}
-                        name="endDateTime"
+                        name="planned_end_time"
                         render={({ field }) => (
                             <FormItem>
                             <FormLabel>End Date & Time</FormLabel>
@@ -125,24 +153,10 @@ export default function FlightModal2({
                             </FormItem>
                         )}
                     />
-                    <Button type="submit">Submit</Button>
+                    <Button type="submit">Отправить запрос</Button>
                 </form>
                 </Form>
 
-            {/* Modal Actions */}
-            <DialogFooter className="flex justify-end space-x-2">
-              <DialogClose asChild>
-                <Button variant="outline" onClick={cancelFlight}>Cancel</Button>
-              </DialogClose>
-              <Button
-                onClick={() => {
-                  setOpen(false);
-                }}
-                disabled={!selected}
-              >
-                Построить маршрут
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </DialogPortal>
       </Dialog>
