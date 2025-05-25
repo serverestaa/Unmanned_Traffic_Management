@@ -1,4 +1,3 @@
-
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { BASE_URL } from '@/lib/constants';  
 import { getToken } from '@/lib/tokenUtils';
@@ -14,8 +13,7 @@ export interface RestrictedZone {
   is_active: boolean;
   created_at: string;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+//eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface NewRestrictedZone
   extends Omit<RestrictedZone, 'id' | 'is_active' | 'created_at'> {}
 
@@ -43,7 +41,7 @@ export interface FlightRequest {
   drone?: Record<string, unknown>;
   pilot?: Record<string, unknown>;
 }
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+//eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface NewFlightRequest
   extends Omit<
     FlightRequest,
@@ -75,53 +73,143 @@ export const flightsApi = createApi({
   baseQuery: fetchBaseQuery({
     baseUrl: `${BASE_URL}/flights`,
     prepareHeaders: (h) => {
-          const token = getToken()
-          if (token) h.set('Authorization', `Bearer ${token}`)
-          return h
-        },
+      const token = getToken()
+      if (token) h.set('Authorization', `Bearer ${token}`)
+      return h
+    },
   }),
   tagTypes: ['RestrictedZones', 'FlightRequests'],
   endpoints: (builder) => ({
     getRestrictedZones: builder.query<RestrictedZone[], void>({
       query: () => '/restricted-zones',
-      providesTags: ['RestrictedZones'],
+      transformResponse: (resp: RestrictedZone[]) =>
+        resp.map((z) => ({ ...z, id: Number(z.id) })),
+      providesTags: (result) => [
+        'RestrictedZones',
+        ...(result?.map(({ id }) => ({ type: 'RestrictedZones' as const, id })) ?? [])
+      ],
     }),
+
     createRestrictedZone: builder.mutation<RestrictedZone, NewRestrictedZone>({
       query: (body) => ({
         url: '/restricted-zones',
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['RestrictedZones'],
-    }),
-    deleteRestrictedZone: builder.mutation<string, number>({
-        query: (zoneId) => ({
-          url: `/restricted-zones/${zoneId}/`,
-          method: 'DELETE',
-        }),
-        async onQueryStarted(zoneId, { dispatch, queryFulfilled }) {
-          // 🔑  convert both sides to Number so the comparison never fails
-          const patch = dispatch(
+      transformResponse: (z: RestrictedZone) => ({ ...z, id: Number(z.id) }),
+      // Optimistic update for create
+      async onQueryStarted(newZone, { dispatch, queryFulfilled }) {
+        // Create temporary ID for optimistic update
+        const tempId = Date.now();
+        const optimisticZone = { 
+          ...newZone, 
+          id: tempId, 
+          is_active: true, 
+          created_at: new Date().toISOString() 
+        };
+
+        const patch = dispatch(
+          flightsApi.util.updateQueryData(
+            'getRestrictedZones',
+            undefined,
+            (draft) => {
+              draft.push(optimisticZone);
+            }
+          )
+        );
+
+        try {
+          const { data: createdZone } = await queryFulfilled;
+          // Replace optimistic entry with real data
+          dispatch(
             flightsApi.util.updateQueryData(
               'getRestrictedZones',
               undefined,
               (draft) => {
-                const idx = draft.findIndex((d) => Number(d.id) === Number(zoneId));
-                if (idx !== -1) draft.splice(idx, 1);
+                const index = draft.findIndex(z => z.id === tempId);
+                if (index !== -1) {
+                  draft[index] = createdZone;
+                }
               }
             )
           );
-          try {
-            await queryFulfilled;
-          } catch {
-            patch.undo();
-          }
-        },
-        invalidatesTags: (_r, _e, zoneId) => [
-          { type: 'RestrictedZones', id: zoneId },
-        ],
+        } catch {
+          patch.undo();
+        }
+      },
+      // Only invalidate the list tag, not individual items
+      invalidatesTags: ['RestrictedZones'],
+    }),
+
+    updateRestrictedZone: builder.mutation<
+      RestrictedZone,
+      { zoneId: number; data: Partial<NewRestrictedZone> }
+    >({
+      query: ({ zoneId, data }) => ({
+        url: `/restricted-zones/${zoneId}`,
+        method: 'PUT',
+        body: data,
       }),
-      
+      transformResponse: (z: RestrictedZone) => ({ ...z, id: Number(z.id) }),
+      // Optimistic update for edit
+      async onQueryStarted(
+        { zoneId, data },
+        { dispatch, queryFulfilled }
+      ) {
+        const patch = dispatch(
+          flightsApi.util.updateQueryData(
+            'getRestrictedZones',
+            undefined,
+            (draft) => {
+              const zone = draft.find((z) => Number(z.id) === Number(zoneId));
+              if (zone) {
+                Object.assign(zone, data);
+              }
+            }
+          )
+        );
+        
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, { zoneId }) => [
+        { type: 'RestrictedZones', id: zoneId }
+      ],
+    }),
+
+    deleteRestrictedZone: builder.mutation<void, number>({
+      query: (zoneId) => ({
+        url: `/restricted-zones/${zoneId}/`,
+        method: 'DELETE',
+      }),
+      // Optimistic update for delete
+      async onQueryStarted(zoneId, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          flightsApi.util.updateQueryData(
+            'getRestrictedZones',
+            undefined,
+            (draft) => {
+              const index = draft.findIndex((z) => Number(z.id) === Number(zoneId));
+              if (index !== -1) {
+                draft.splice(index, 1);
+              }
+            }
+          )
+        );
+        
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, zoneId) => [
+        { type: 'RestrictedZones', id: zoneId }
+      ],
+    }),
 
     checkConflicts: builder.mutation<ConflictResponse, CheckConflictPoint[]>({
       query: (body) => ({
@@ -141,7 +229,7 @@ export const flightsApi = createApi({
     }),
     getFlightRequest: builder.query<FlightRequest, number>({
       query: (id) => `/requests/${id}`,
-      providesTags: (_r, _e, id) => [{ type: 'FlightRequests', id }],
+      providesTags: (result, error, id) => [{ type: 'FlightRequests', id }],
     }),
     createFlightRequest: builder.mutation<FlightRequest, NewFlightRequest>({
       query: (body) => ({
@@ -150,41 +238,6 @@ export const flightsApi = createApi({
         body,
       }),
       invalidatesTags: ['FlightRequests'],
-    }),
-    updateRestrictedZone: builder.mutation<
-      RestrictedZone,
-      { zoneId: number; data: Partial<NewRestrictedZone> }
-    >({
-      query: ({ zoneId, data }) => ({
-        url: `/restricted-zones/${zoneId}`,
-        method: 'PUT',          // PATCH if your backend prefers
-        body: data,
-      }),
-      // ⚡ optimistic cache update
-      async onQueryStarted(
-        { zoneId, data },
-        { dispatch, queryFulfilled }
-      ) {
-        const patch = dispatch(
-          flightsApi.util.updateQueryData(
-            'getRestrictedZones',
-            undefined,
-            (draft) => {
-              const z = draft.find((d) => d.id === zoneId);
-              if (z) Object.assign(z, data);      // update locally
-            }
-          )
-        );
-        try {
-          await queryFulfilled;                   // keep patch
-        } catch {
-          patch.undo();                           // rollback on error
-        }
-      },
-      invalidatesTags: (_r, _e, { zoneId }) => [
-        'RestrictedZones',
-        { type: 'RestrictedZones', id: zoneId },
-      ],
     }),
     updateFlightRequestStatus: builder.mutation<
       FlightRequest,
@@ -195,7 +248,7 @@ export const flightsApi = createApi({
         method: 'PUT',
         body,
       }),
-      invalidatesTags: (_r, _e, { requestId }) => [
+      invalidatesTags: (result, error, { requestId }) => [
         'FlightRequests',
         { type: 'FlightRequests', id: requestId },
       ],
