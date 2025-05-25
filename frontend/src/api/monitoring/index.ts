@@ -56,9 +56,13 @@ export const monitoringApi = createApi({
         }),
         providesTags: ['ZoneDrones'],
     }),
-  
-  
-    /** GET one cell (not used in the map below but handy) */
+
+    getDroneTelemetry: b.query<DroneTelemetry[], string>({
+        query: (h3) => `/drones/telemetry/${h3}`,
+        providesTags: (result, error, h3) => 
+        result ? [{ type: 'ZoneDrones', id: h3 }] : [],
+    }),
+
     getHexZone: b.query<ZoneDrones, string>({
       query: (h3) => `/zones/hex/${h3}`,
     }),
@@ -73,4 +77,5 @@ export const {
   useGetAllHexQuery,
   useGetZoneDronesQuery,
   useGetDashboardQuery,
+  useGetDroneTelemetryQuery,
 } = monitoringApi
