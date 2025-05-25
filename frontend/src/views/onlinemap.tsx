@@ -16,7 +16,7 @@ export const OnlineMap = () => {
   const { mode, setMode, clearSelection, points } = useMapContext();
   const [flightModal, setFlightModal] = useState(false);
   const [flightModal2, setFlightModal2] = useState(false);
-
+  
   function handleStartFlightProcess() {
     setFlightModal(true);
     setMode("flight_creation");
