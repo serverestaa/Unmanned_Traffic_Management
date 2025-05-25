@@ -50,7 +50,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader>
-        <TypographyH3 className="pt-1">Decedron</TypographyH3>
+        <TypographyH3 className="pt-1">Decedrone</TypographyH3>
       </SidebarHeader>
 
       <SidebarContent>
