@@ -16,10 +16,6 @@ import {
 const center = { lat: 51.1605, lng: 71.4704 };
 import { useMapContext } from '@/context/MapContext';
 
-interface LocationPoint {
-  lat: number;
-  lng: number;
-};
 
 export default function MapWithDraw() {
   const { isLoaded, loadError } = useJsApiLoader({
@@ -44,11 +40,7 @@ export default function MapWithDraw() {
   const { data: zones = [] } = useGetRestrictedZonesQuery();
   const {mode,
     startPosition,
-    endPosition,
     setStartPosition,
-    setEndPosition,
-    flights,
-    clearSelection,
     addPosition,
     points,
   } = useMapContext();
@@ -129,6 +121,7 @@ export default function MapWithDraw() {
           onClick={onCircleClick}
         />
       ))}
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {points.length>=2 && points.map((_: any,index: number)=>{
         if (index==points.length-1) return;
         
@@ -138,6 +131,7 @@ export default function MapWithDraw() {
               {lat: points[index].lat, lng: points[index].lng},
               {lat: points[index+1].lat, lng: points[index+1].lng}
             ]}
+            key={index}
             options={{
               strokeOpacity: 0.8,
               strokeWeight: 4,

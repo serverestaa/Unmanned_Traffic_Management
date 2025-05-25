@@ -1,21 +1,10 @@
 "use client";
-import { useState } from "react";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-  DialogOverlay,
   DialogPortal,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useGetMyDronesQuery } from "@/api/drone";
-import { DroneDataTable } from "./components/DataTable";
-import { droneColumns } from "./components/column";
 
 import { useForm } from "react-hook-form";
 import {
@@ -36,10 +25,10 @@ import { TypographyP } from "@/components/ui/typop";
 export default function FlightModal2({
   setFlightModal: setOpen,
   flightModal: open,
-  cancelFlight,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }: any) {
 
-    const {currentDrone, points, clearSelection} = useMapContext();
+    const {currentDrone, points} = useMapContext();
     const [createRequest] = useCreateFlightRequestMutation();
 
     const form = useForm({
@@ -50,11 +39,11 @@ export default function FlightModal2({
             purpose: ""
         },
     });
-    console.log(currentDrone);
-
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function onSubmit(formData:any) {
         formData.drone_id = currentDrone.id;
         formData.pilot_id = currentDrone.owner_id;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formData.waypoints = points.map((point: { lat: any; lng: any; },index: number)=>{
             return {latitude:point.lat, longitude:point.lng, sequence: index+1, altitude: formData.max_altitude}
         });
@@ -93,9 +82,9 @@ export default function FlightModal2({
                         Points
                     </TypographyP>
                     <ul>
-                        {points.map((point: { name: any; },index: number)=>{
+                        {points.map((point: { name: string; },index: number)=>{
                             return (
-                                <TypographyP>
+                                <TypographyP key={index}>
                                     {`Point ${index+1}: ${point.name}`}
                                 </TypographyP>
                             )

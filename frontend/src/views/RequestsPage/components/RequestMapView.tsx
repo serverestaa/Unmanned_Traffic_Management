@@ -2,45 +2,33 @@
 import React from 'react'
 import {
   GoogleMap,
-  DrawingManager,
-  Polygon,
   Circle,                        
   useJsApiLoader,
   Polyline,
-  InfoWindow
 } from '@react-google-maps/api';
 import {
     Dialog,
-    DialogTrigger,
     DialogContent,
     DialogHeader,
     DialogTitle,
     DialogDescription,
-    DialogFooter,
-    DialogClose,
-    DialogOverlay,
     DialogPortal,
 } from "@/components/ui/dialog";
-import { Button } from '@/components/ui/button';
 import { useGetRestrictedZonesQuery } from '@/api/flights';
-import dynamic from "next/dynamic";
-
-const MapWithDraw = dynamic(() => import("@/widgets/MapWithDraw"), {
-    ssr: false,
-});
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const RequestMapView = ({points, showView, setShowView}:any) => {
 
 
-    const { isLoaded, loadError } = useJsApiLoader({
+    const { isLoaded } = useJsApiLoader({
         googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
         libraries: ['drawing'],
     });
 
     const { data: zones = [] } = useGetRestrictedZonesQuery();
-
-    const middleLatitude = points.reduce((acc,cur)=>{return acc+cur.latitude}, 0)/points.length;
-    const middleLongitude = points.reduce((acc,cur)=>{return acc+cur.longitude}, 0)/points.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const middleLatitude = points.reduce((acc: any,cur: any)=>{return acc+cur.latitude}, 0)/points.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const middleLongitude = points.reduce((acc: any,cur: any)=>{return acc+cur.longitude}, 0)/points.length;
 
     const center = {lat: middleLatitude, lng:middleLongitude};
     console.log(points);
@@ -76,11 +64,13 @@ const RequestMapView = ({points, showView, setShowView}:any) => {
                     }}
                     />
                 ))}
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {points.length>=2 && points.map((_: any,index: number)=>{
                     if (index==points.length-1) return;
                     
                     return (
                         <Polyline
+                        key={index}
                             path={[
                             {lat: points[index].lat || points[index].latitude, 
                                 lng: points[index].lng || points[index].longitude},

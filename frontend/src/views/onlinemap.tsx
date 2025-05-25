@@ -13,7 +13,7 @@ const MapWithDraw = dynamic(() => import("@/widgets/MapWithDraw"), {
 });
 
 export const OnlineMap = () => {
-  const { mode, setMode, startPosition, endPosition, clearSelection, points } = useMapContext();
+  const { mode, setMode, clearSelection, points } = useMapContext();
   const [flightModal, setFlightModal] = useState(false);
   const [flightModal2, setFlightModal2] = useState(false);
 
@@ -48,8 +48,8 @@ export const OnlineMap = () => {
         <>
         <aside className="absolute left-10 top-8 bg-slate-400 p-2 rounded-xl">
             <ul className="mb-2">
-                {points.map((point: { name: any; },index: any)=>{
-                    return <p className="p-1">{`Точка ${index}: ${point?.name}`}</p>
+                {points.map((point: { name: string; },index: number)=>{
+                    return <p key={index} className="p-1">{`Точка ${index}: ${point?.name}`}</p>
                 })}
             </ul>
             {points.length>=2 && <Button onClick={()=>setFlightModal2(true)}>

@@ -36,22 +36,29 @@ interface MapContextType {
   createFlight: () => void;
   /** Reset the current start/end selection */
   clearSelection: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mode: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setMode: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addPosition: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   points: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   currentDrone: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setCurrentDrone: any
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
 
 export const MapProvider = ({ children }: { children: ReactNode }) => {
-    const [flights, setFlights] = useState<Flight[]>([]);
+    const [flights] = useState<Flight[]>([]);
     const [startPosition, setStart] = useState<LatLng | null>(null);
     const [endPosition, setEnd] = useState<LatLng | null>(null);
     
     const [points, setPoints] = useState<LatLng[]>([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [mode, setMode] = useState<any>(null);
 
     const [currentDrone, setCurrentDrone] = useState();

@@ -2,20 +2,15 @@
 import { useState } from "react";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
   DialogClose,
-  DialogOverlay,
   DialogPortal,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useGetMyDronesQuery } from "@/api/drone";
-import { DroneDataTable } from "./components/DataTable";
-import { droneColumns } from "./components/column";
 
 import {
     Select,
@@ -30,18 +25,16 @@ export default function FlightModal({
   setFlightModal: setOpen,
   flightModal: open,
   cancelFlight,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }: any) {
     const { data = [], isLoading } = useGetMyDronesQuery();
     const [selected, setSelected] = useState<string | undefined>(undefined);
+    const {
+      setCurrentDrone
+  } = useMapContext();
     if (isLoading) {
         return <p className="text-center py-10 text-muted-foreground">Loading…</p>;
     }
-    console.log(data);
-
-    const {
-        currentDrone, 
-        setCurrentDrone
-    } = useMapContext();
     return (
     <>
       {/* Dialog as Modal */}
