@@ -29,6 +29,7 @@ import {
 import { DroneDataTable } from './components/DataTable'
 import { droneColumns } from './components/column'
 import { useState } from 'react'
+import { useGetMyFlightRequestsQuery } from '@/api/flights'
 
 /* ────────────── validation schema ────────────── */
 const schema = z.object({
@@ -46,6 +47,8 @@ export default function MyDronesPage() {
   const { data = [], isLoading } = useGetMyDronesQuery()
   const [createDrone]            = useCreateDroneMutation()
   const [open, setOpen] = useState(false)
+
+  const {data: requestsData=[], isLoading: requestsLoading} = useGetMyFlightRequestsQuery();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),

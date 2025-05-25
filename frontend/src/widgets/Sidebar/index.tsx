@@ -31,6 +31,7 @@ const pilotItems = [
   { title: 'Home', url: '/', icon: Home },
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'My drones', url: '/my-drones', icon: Plane },
+  { title: 'My Requests', url: '/my-requests', icon: UsersRound },
 ]
 
 const adminItems = [
