@@ -16,7 +16,7 @@ from .models import FlightRequest, RestrictedZone, Waypoint
 from .schemas import (
     FlightRequestCreate, FlightRequestUpdate, FlightRequest as FlightRequestSchema,
     FlightRequestWithDetails, RestrictedZoneCreate, RestrictedZone as RestrictedZoneSchema,
-    ConflictCheck, WaypointBase
+    ConflictCheck, WaypointBase, RestrictedZoneUpdate
 )
 
 router = APIRouter(prefix="/flights", tags=["Flights"])
@@ -549,4 +549,84 @@ async def delete_restricted_zone(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error deleting restricted zone"
+        )
+
+
+@router.put("/restricted-zones/{zone_id}", response_model=RestrictedZoneSchema)
+async def update_restricted_zone(
+        zone_id: int,
+        zone_update: RestrictedZoneUpdate,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update the radius and/or max altitude of a restricted zone.
+    Only admins can update restricted zones.
+    """
+    # Only admins can update restricted zones
+    if current_user.role != "admin":
+        logger.warning(f"Non-admin user {current_user.email} attempted to update restricted zone {zone_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+
+    # Get the zone
+    result = await db.execute(
+        select(RestrictedZone).filter(RestrictedZone.id == zone_id)
+    )
+    zone = result.scalar_one_or_none()
+    
+    if not zone:
+        logger.warning(f"Attempted to update non-existent restricted zone {zone_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Restricted zone not found"
+        )
+
+    # Check if there are any active flight requests that would be affected by this change
+    current_time = datetime.utcnow()
+    result = await db.execute(
+        select(FlightRequest).filter(
+            and_(
+                FlightRequest.status.in_(["approved", "active"]),
+                FlightRequest.planned_end_time > current_time
+            )
+        )
+    )
+    active_flights = result.scalars().all()
+
+    for flight in active_flights:
+        # Get waypoints for the flight
+        waypoints_result = await db.execute(
+            select(Waypoint)
+            .filter(Waypoint.flight_request_id == flight.id)
+            .order_by(Waypoint.sequence)
+        )
+        waypoints = waypoints_result.scalars().all()
+        route_points = [(wp.latitude, wp.longitude) for wp in waypoints]
+
+        # Check if the flight would be affected by the new radius
+        if route_intersects_zone(route_points, zone.center_lat, zone.center_lng, zone_update.radius):
+            logger.warning(f"Cannot update zone {zone_id} as it would affect active flight {flight.id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot update zone as it would affect active flight request {flight.id}"
+            )
+
+    # Update the zone
+    try:
+        zone.radius = zone_update.radius
+        if zone_update.max_altitude is not None:
+            zone.max_altitude = zone_update.max_altitude
+        
+        await db.commit()
+        await db.refresh(zone)
+        logger.info(f"Restricted zone {zone_id} updated by admin {current_user.email}")
+        return zone
+    except Exception as e:
+        logger.error(f"Error updating restricted zone {zone_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error updating restricted zone"
         )

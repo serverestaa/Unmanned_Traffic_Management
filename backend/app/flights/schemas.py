@@ -37,6 +37,11 @@ class RestrictedZoneCreate(RestrictedZoneBase):
     pass
 
 
+class RestrictedZoneUpdate(BaseModel):
+    radius: float
+    max_altitude: Optional[float] = None
+
+
 class RestrictedZone(RestrictedZoneBase):
     id: int
     is_active: bool
