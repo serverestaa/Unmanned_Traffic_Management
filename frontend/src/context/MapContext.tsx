@@ -39,7 +39,9 @@ interface MapContextType {
   mode: any,
   setMode: any,
   addPosition: any,
-  points: any
+  points: any,
+  currentDrone: any,
+  setCurrentDrone: any
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -51,6 +53,8 @@ export const MapProvider = ({ children }: { children: ReactNode }) => {
     
     const [points, setPoints] = useState<LatLng[]>([]);
     const [mode, setMode] = useState<any>(null);
+
+    const [currentDrone, setCurrentDrone] = useState();
 
     const setStartPosition = (pos: LatLng) => {
         setStart(pos);
@@ -90,7 +94,9 @@ export const MapProvider = ({ children }: { children: ReactNode }) => {
             mode,
             setMode,
             addPosition,
-            points
+            points,
+            currentDrone,
+            setCurrentDrone
         }}
         >
         {children}

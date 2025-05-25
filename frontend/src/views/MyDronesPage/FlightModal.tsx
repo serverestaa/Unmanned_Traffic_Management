@@ -24,6 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useMapContext } from "@/context/MapContext";
 
 export default function FlightModal({
   setFlightModal: setOpen,
@@ -37,6 +38,10 @@ export default function FlightModal({
     }
     console.log(data);
 
+    const {
+        currentDrone, 
+        setCurrentDrone
+    } = useMapContext();
     return (
     <>
       {/* Dialog as Modal */}
@@ -54,7 +59,8 @@ export default function FlightModal({
                     {data.map((drone, idx) => (
                         <SelectItem
                         key={idx}
-                        value={`${drone.brand}|${drone.model}|${drone.serial_number}`}>
+                        value={`${drone.brand}|${drone.model}|${drone.serial_number}`}
+                        onClick={setCurrentDrone(drone)}>
                         <div className="grid grid-cols-3 gap-4">
                             <span>{drone.brand}</span>
                             <span>{drone.model}</span>

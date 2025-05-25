@@ -28,6 +28,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useCreateFlightRequestMutation } from "@/api/flights";
+import { useMapContext } from "@/context/MapContext";
+import { TypographyP } from "@/components/ui/typop";
 
 
 export default function FlightModal2({
@@ -35,12 +38,8 @@ export default function FlightModal2({
   flightModal: open,
   cancelFlight,
 }: any) {
-    const { data = [], isLoading } = useGetMyDronesQuery();
-    const [selected, setSelected] = useState<string | undefined>(undefined);
-    if (isLoading) {
-        return <p className="text-center py-10 text-muted-foreground">Loading…</p>;
-    }
-    console.log(data);
+
+    const {currentDrone, points} = useMapContext();
 
     const form = useForm({
         defaultValues: {
@@ -50,13 +49,13 @@ export default function FlightModal2({
         },
     });
 
-    function onSubmit(data:any) {
+    function onSubmit(formData:any) {
         toast.promise(
-            signin(data).unwrap(),
+            useCreateFlightRequestMutation(formData),
             {
-              loading: 'Signing in…',
-              success: () => {
-                return 'Signed in!';
+              loading: 'Flight creation...',
+              success: ({data}) => {
+                return 'Flight created!!';
               },
               error: (err) => `Flight creation failed: ${err.data?.message || err.message}`,
             }
@@ -72,44 +71,59 @@ export default function FlightModal2({
 
           <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 p-4">
+                    <TypographyP>
+                        {`Drone: ${currentDrone}`}
+                    </TypographyP>
+                    <TypographyP>
+                        Points
+                    </TypographyP>
+                    <ul>
+                        {points.map((point,index)=>{
+                            return (
+                                <TypographyP>
+                                    {`Point ${index+1}: ${point.name}`}
+                                </TypographyP>
+                            )
+                        })}
+                    </ul>
                     <FormField
-                    control={form.control}
-                    name="height"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Height</FormLabel>
-                        <FormControl>
-                            <Input {...field} placeholder="Enter height" />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
+                        control={form.control}
+                        name="height"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Height</FormLabel>
+                            <FormControl>
+                                <Input {...field} placeholder="Enter height" />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
                     />
                     <FormField
-                    control={form.control}
-                    name="startDateTime"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Start Date & Time</FormLabel>
-                        <FormControl>
-                            <Input {...field} type="datetime-local" />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
+                        control={form.control}
+                        name="startDateTime"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Start Date & Time</FormLabel>
+                            <FormControl>
+                                <Input {...field} type="datetime-local" />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
                     />
                     <FormField
-                    control={form.control}
-                    name="endDateTime"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>End Date & Time</FormLabel>
-                        <FormControl>
-                            <Input {...field} type="datetime-local" />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
+                        control={form.control}
+                        name="endDateTime"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>End Date & Time</FormLabel>
+                            <FormControl>
+                                <Input {...field} type="datetime-local" />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
                     />
                     <Button type="submit">Submit</Button>
                 </form>
