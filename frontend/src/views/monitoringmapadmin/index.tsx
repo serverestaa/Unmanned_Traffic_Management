@@ -1,25 +1,20 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useJsApiLoader, GoogleMap, Polygon, Marker } from '@react-google-maps/api'
+import { useJsApiLoader, GoogleMap, Polygon, OverlayView } from '@react-google-maps/api'
 import { cellToBoundary } from 'h3-js'
 import {
   useGetAllHexQuery,
   useGetZoneDronesQuery,
 } from '@/api/monitoring'
-
-// map center
+import { PlaneIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+    HoverCard,
+    HoverCardTrigger,
+    HoverCardContent,
+  } from '@/components/ui/hover-card'
 const center = { lat: 51.1605, lng: 71.4704 }
-
-function planeSvg(col = '#dc2626'): google.maps.Symbol {
-  return {
-    path:        'M1 10 L21 12 L21 8 L1 6 L0 7 L0 11 Z',
-    fillColor:   col,
-    fillOpacity: 1,
-    scale:       1,
-    strokeWeight:0,
-  }
-}
 
 export default function MonitoringMapAdmin() {
   const { data: cells = [], isLoading: loadingHex } = useGetAllHexQuery()
@@ -85,12 +80,28 @@ export default function MonitoringMapAdmin() {
         ))}
 
         {drones.map((d) => (
-          <Marker
+          <OverlayView
             key={d.id}
             position={{ lat: d.latitude, lng: d.longitude }}
-            icon={planeSvg()}
-            title={`Drone ${d.drone_id}\nAlt ${d.altitude} m\nBatt ${d.battery_level}%`}
-          />
+            mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+          >
+            <HoverCard>
+              <HoverCardTrigger asChild>
+                <Button
+                  size="icon"
+                  variant={selected.includes(d.hex_cell_id.toString()) ? 'default' : 'outline'}
+                  className="!p-1 !text-xs !rounded-full !bg-white !shadow-md"
+                >
+                  <PlaneIcon className="h-4 w-4" />
+                </Button>
+              </HoverCardTrigger>
+              <HoverCardContent side="top" className="w-40">
+                <p className="font-semibold">Drone #{d.drone_id}</p>
+                <p>Battery: {d.battery_level}%</p>
+                <p>Altitude: {d.altitude} m</p>
+              </HoverCardContent>
+            </HoverCard>
+          </OverlayView>
         ))}
       </GoogleMap>
 

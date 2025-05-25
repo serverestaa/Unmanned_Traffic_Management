@@ -52,7 +52,7 @@ export const monitoringApi = createApi({
         query: (h3List) => ({
             url: '/zone/drones',
             method: 'GET',
-            params: { zones: `[${h3List}]` },
+            params: { zones: `${h3List}` },
         }),
         providesTags: ['ZoneDrones'],
     }),

@@ -25,8 +25,9 @@ const RequestMapView = ({points, showView, setShowView}:any) => {
     });
 
     const { data: zones = [] } = useGetRestrictedZonesQuery();
-
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const middleLatitude = points.reduce((acc: any,cur: { latitude: any; })=>{return acc+cur.latitude}, 0)/points.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const middleLongitude = points.reduce((acc: any,cur: { longitude: any; })=>{return acc+cur.longitude}, 0)/points.length;
 
     const center = {lat: middleLatitude, lng:middleLongitude};
