@@ -737,7 +737,8 @@ async def get_all_hex(
                 "h3_index": cell.h3_index,
                 "center_lat": cell.center_lat,
                 "center_lng": cell.center_lng,
-                "drones_count": cell.drones_count
+                "created_at": cell.created_at,
+                "last_updated": cell.last_updated
             })
         
         return hex_cells_data

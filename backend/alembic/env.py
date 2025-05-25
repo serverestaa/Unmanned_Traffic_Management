@@ -5,7 +5,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
-
+import os
 # Import your models here
 from app.database import Base
 from app.auth.models import User
@@ -14,13 +14,23 @@ from app.flights.models import FlightRequest, RestrictedZone, Waypoint
 from app.monitoring.models import TelemetryData, Alert
 
 # this is the Alembic Config object
+
+# this is the Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging
+# читать .ini и логирование
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here for 'autogenerate' support
+# ПЕРЕОПРЕДЕЛЯЕМ URL из переменных окружения
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
+
+# добавить ваши модели
+from app.database import Base
+# … остальные модели …
+
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
