@@ -270,199 +270,6 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-async def process_telemetry_data(
-        telemetry: TelemetryDataCreate,
-        db: AsyncSession
-) -> TelemetryData:
-    """Process incoming telemetry data and update current position"""
-    try:
-        # Create telemetry record
-        db_telemetry = TelemetryData(**telemetry.model_dump())
-        db.add(db_telemetry)
-
-        # Calculate H3 index for current position
-        h3_index = h3.geo_to_h3(telemetry.latitude, telemetry.longitude, 8)
-
-        # Get or create hex cell
-        hex_cell = await db.execute(
-            select(HexGridCell).where(HexGridCell.h3_index == h3_index)
-        )
-        hex_cell = hex_cell.scalar_one_or_none()
-
-        if not hex_cell:
-            # Create new hex cell
-            center = h3.h3_to_geo(h3_index)
-            hex_cell = HexGridCell(
-                h3_index=h3_index,
-                center_lat=center[0],
-                center_lng=center[1]
-            )
-            db.add(hex_cell)
-            await db.flush()
-
-        # Get current position
-        current_pos = await db.execute(
-            select(CurrentDronePosition)
-            .where(CurrentDronePosition.drone_id == telemetry.drone_id)
-        )
-        current_pos = current_pos.scalar_one_or_none()
-
-        if current_pos:
-            # Check if hex cell changed
-            old_hex_cell_id = current_pos.hex_cell_id
-
-            # Update position
-            current_pos.hex_cell_id = hex_cell.id
-            current_pos.latitude = telemetry.latitude
-            current_pos.longitude = telemetry.longitude
-            current_pos.altitude = telemetry.altitude
-            current_pos.speed = telemetry.speed or 0.0
-            current_pos.heading = telemetry.heading or 0.0
-            current_pos.battery_level = telemetry.battery_level or 100.0
-            current_pos.status = telemetry.status or "airborne"
-            current_pos.flight_request_id = telemetry.flight_request_id
-            current_pos.last_update = datetime.utcnow()
-
-            # Log hex cell transition
-            if old_hex_cell_id != hex_cell.id:
-                logger.info(f"Drone {telemetry.drone_id} moved from hex cell {old_hex_cell_id} to {hex_cell.id}")
-
-                # No need to manually delete anything from the old hex cell
-                # The CurrentDronePosition record is already updated with the new hex_cell_id
-                # and the database relationships will handle this automatically
-        else:
-            # Create new position
-            current_pos = CurrentDronePosition(
-                drone_id=telemetry.drone_id,
-                flight_request_id=telemetry.flight_request_id,
-                hex_cell_id=hex_cell.id,
-                latitude=telemetry.latitude,
-                longitude=telemetry.longitude,
-                altitude=telemetry.altitude,
-                speed=telemetry.speed or 0.0,
-                heading=telemetry.heading or 0.0,
-                battery_level=telemetry.battery_level or 100.0,
-                status=telemetry.status or "airborne"
-            )
-            db.add(current_pos)
-            logger.info(f"Created new position for drone {telemetry.drone_id} in hex cell {hex_cell.id}")
-
-        # Check for alerts
-        violation = await check_restricted_zone_violation(
-            telemetry.drone_id,
-            telemetry.latitude,
-            telemetry.longitude,
-            telemetry.altitude,
-            db
-        )
-
-        if violation:
-            # Check if alert already exists
-            existing_alert = await db.execute(
-                select(Alert)
-                .where(
-                    and_(
-                        Alert.drone_id == telemetry.drone_id,
-                        Alert.alert_type == "restricted_zone_violation",
-                        Alert.is_resolved == False,
-                        Alert.created_at > datetime.utcnow() - timedelta(minutes=5)
-                    )
-                )
-            )
-            if not existing_alert.scalar_one_or_none():
-                alert = Alert(
-                    drone_id=telemetry.drone_id,
-                    flight_request_id=telemetry.flight_request_id,
-                    alert_type="restricted_zone_violation",
-                    severity=violation['severity'],
-                    message=violation['message'],
-                    latitude=telemetry.latitude,
-                    longitude=telemetry.longitude,
-                    altitude=telemetry.altitude
-                )
-                db.add(alert)
-
-                # Broadcast alert
-                await manager.broadcast({
-                    "type": "restricted_zone_alert",
-                    "data": [{
-                        "drone_id": telemetry.drone_id,
-                        "zone_name": violation['zone_name'],
-                        "severity": violation['severity'],
-                        "message": violation['message'],
-                        "latitude": telemetry.latitude,
-                        "longitude": telemetry.longitude,
-                        "altitude": telemetry.altitude,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }]
-                })
-
-        # Check for low battery alert
-        if telemetry.battery_level and telemetry.battery_level < 20:
-            existing_battery_alert = await db.execute(
-                select(Alert)
-                .where(
-                    and_(
-                        Alert.drone_id == telemetry.drone_id,
-                        Alert.alert_type == "low_battery",
-                        Alert.is_resolved == False,
-                        Alert.created_at > datetime.utcnow() - timedelta(minutes=10)
-                    )
-                )
-            )
-            if not existing_battery_alert.scalar_one_or_none():
-                battery_alert = Alert(
-                    drone_id=telemetry.drone_id,
-                    flight_request_id=telemetry.flight_request_id,
-                    alert_type="low_battery",
-                    severity="high" if telemetry.battery_level < 10 else "medium",
-                    message=f"Low battery: {telemetry.battery_level}%",
-                    latitude=telemetry.latitude,
-                    longitude=telemetry.longitude,
-                    altitude=telemetry.altitude
-                )
-                db.add(battery_alert)
-
-        await db.commit()
-        await db.refresh(db_telemetry)
-
-        # Broadcast telemetry update
-        await manager.broadcast({
-            "type": "telemetry_update",
-            "data": [{
-                "drone_id": telemetry.drone_id,
-                "latitude": telemetry.latitude,
-                "longitude": telemetry.longitude,
-                "altitude": telemetry.altitude,
-                "speed": telemetry.speed,
-                "heading": telemetry.heading,
-                "battery_level": telemetry.battery_level,
-                "status": telemetry.status,
-                "timestamp": db_telemetry.timestamp.isoformat(),
-                "flight_request_id": telemetry.flight_request_id
-            }]
-        })
-
-        return db_telemetry
-
-    except Exception as e:
-        logger.error(f"Error processing telemetry data: {str(e)}", exc_info=True)
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error processing telemetry data"
-        )
-
-
-@router.post("/telemetry", response_model=TelemetryDataSchema)
-async def submit_telemetry(
-        telemetry: TelemetryDataCreate,
-        db: AsyncSession = Depends(get_db)
-):
-    """Submit telemetry data for a drone"""
-    return await process_telemetry_data(telemetry, db)
-
-
 @router.get("/dashboard", response_model=MonitoringDashboard)
 async def get_monitoring_dashboard(
         db: AsyncSession = Depends(get_db),
@@ -906,5 +713,38 @@ async def process_telemetry(
     return await process_telemetry_data(telemetry, db)
 
 
-# Import here to avoid circular imports
-from ..database import AsyncSessionLocal
+@router.get("/all-hex")
+async def get_all_hex(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all hexagonal grid cells from the database.
+    Returns a list of all hex cells with their properties.
+    """
+    try:
+        # Query all hex cells
+        result = await db.execute(
+            select(HexGridCell)
+            .order_by(HexGridCell.h3_index)
+        )
+        hex_cells = result.scalars().all()
+        
+        # Convert to list of dictionaries for proper serialization
+        hex_cells_data = []
+        for cell in hex_cells:
+            hex_cells_data.append({
+                "id": cell.id,
+                "h3_index": cell.h3_index,
+                "center_lat": cell.center_lat,
+                "center_lng": cell.center_lng,
+                "drones_count": cell.drones_count
+            })
+        
+        return hex_cells_data
+        
+    except Exception as e:
+        logger.error(f"Error retrieving hex cells: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving hex cells"
+        )
