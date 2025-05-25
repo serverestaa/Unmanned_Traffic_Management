@@ -774,6 +774,7 @@ async def get_zone_drones(
                     'id', CurrentDronePosition.id,
                     'drone_id', CurrentDronePosition.drone_id,
                     'flight_request_id', CurrentDronePosition.flight_request_id,
+                    'hex_cell_id', CurrentDronePosition.hex_cell_id,
                     'latitude', CurrentDronePosition.latitude,
                     'longitude', CurrentDronePosition.longitude,
                     'altitude', CurrentDronePosition.altitude,
