@@ -29,11 +29,19 @@ import {
         }
       );
       builder.addMatcher(
-        flightsApi.endpoints.deleteRestrictedZone.matchFulfilled,
-        (state, { meta }) => {
-          adapter.removeOne(state, meta.arg.originalArgs as number);
+        flightsApi.endpoints.updateRestrictedZone.matchFulfilled,
+        (state, { payload }) => {
+          adapter.upsertOne(state, payload);        // <- update radius etc.
         }
       );
+      
+      builder.addMatcher(
+        flightsApi.endpoints.deleteRestrictedZone.matchFulfilled,
+        (state, { meta }) => {
+          adapter.removeOne(state, Number(meta.arg.originalArgs)); // id is numeric
+        }
+      );
+      
     },
   });
   

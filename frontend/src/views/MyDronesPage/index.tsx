@@ -28,6 +28,7 @@ import {
 } from '@/api/drone'
 import { DroneDataTable } from './components/DataTable'
 import { droneColumns } from './components/column'
+import { useState } from 'react'
 
 /* ────────────── validation schema ────────────── */
 const schema = z.object({
@@ -44,6 +45,7 @@ type FormValues = z.infer<typeof schema>
 export default function MyDronesPage() {
   const { data = [], isLoading } = useGetMyDronesQuery()
   const [createDrone]            = useCreateDroneMutation()
+  const [open, setOpen] = useState(false)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -57,12 +59,23 @@ export default function MyDronesPage() {
     },
   })
 
-  const onSubmit = (values: FormValues) =>
-    toast.promise(createDrone(values).unwrap(), {
+  const onSubmit = (values: FormValues) => {
+    const promise = createDrone(values).unwrap()
+
+    toast.promise(promise, {
       loading: 'Creating…',
       success: 'Drone added!',
       error:   'Failed',
     })
+
+    promise.then(() => {
+      setOpen(false)         
+      form.reset()            
+    })
+  }
+
+
+    
 
   return (
     <div className="w-full flex flex-col gap-4 p-3">
@@ -70,7 +83,7 @@ export default function MyDronesPage() {
       <div className="w-full flex items-center justify-between">
         <h1 className="text-xl font-semibold">My Drones</h1>
 
-        <Dialog>
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
