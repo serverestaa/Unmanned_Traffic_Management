@@ -5,6 +5,7 @@ import "./globals.css";
 import { Providers } from "@/providers";
 import { Header } from "@/widgets/Header";
 import { AppSidebar } from "@/widgets/Sidebar";
+import { MapProvider } from "@/context/MapContext";
 
 export const metadata: Metadata = {
   title: "Decedrone",
@@ -25,8 +26,11 @@ export default function RootLayout({
           <AppSidebar />
           <main className="min-h-screen flex w-full gap-4 flex-col">
             <Header />
-            {children}
+            <MapProvider>
+              {children}
+            </MapProvider>
           </main>
+            
         </Providers>
       </body>
     </html>

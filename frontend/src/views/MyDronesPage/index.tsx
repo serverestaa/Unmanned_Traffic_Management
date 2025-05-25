@@ -66,7 +66,7 @@ export default function MyDronesPage() {
       loading: 'Creating…',
       success: 'Drone added!',
       error:   'Failed',
-    })
+    });
 
     promise.then(() => {
       setOpen(false)         
