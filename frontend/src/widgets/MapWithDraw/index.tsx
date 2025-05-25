@@ -129,7 +129,7 @@ export default function MapWithDraw() {
           onClick={onCircleClick}
         />
       ))}
-      {points.length>=2 && points.map((_,index)=>{
+      {points.length>=2 && points.map((_: any,index: number)=>{
         if (index==points.length-1) return;
         
         return (

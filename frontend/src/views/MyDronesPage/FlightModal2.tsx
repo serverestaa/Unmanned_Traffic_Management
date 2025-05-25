@@ -55,7 +55,7 @@ export default function FlightModal2({
     function onSubmit(formData:any) {
         formData.drone_id = currentDrone.id;
         formData.pilot_id = currentDrone.owner_id;
-        formData.waypoints = points.map((point,index)=>{
+        formData.waypoints = points.map((point: { lat: any; lng: any; },index: number)=>{
             return {latitude:point.lat, longitude:point.lng, sequence: index+1, altitude: formData.max_altitude}
         });
         console.log(formData);
@@ -93,7 +93,7 @@ export default function FlightModal2({
                         Points
                     </TypographyP>
                     <ul>
-                        {points.map((point,index)=>{
+                        {points.map((point: { name: any; },index: number)=>{
                             return (
                                 <TypographyP>
                                     {`Point ${index+1}: ${point.name}`}

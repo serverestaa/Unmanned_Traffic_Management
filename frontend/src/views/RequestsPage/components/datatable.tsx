@@ -25,6 +25,7 @@ import {
   FlightRequest,
   useUpdateFlightRequestStatusMutation,
 } from '@/api/flights'
+import RequestMapView from './RequestMapView'
 
 // Props for the table
 type Props = {
@@ -40,6 +41,8 @@ export const RequestsDataTable: React.FC<Props> = ({ data, columns }) => {
 
   const [declineOpen, setDeclineOpen] = React.useState(false)
   const [declineReason, setDeclineReason] = React.useState('')
+
+  const [showView, setShowView] = React.useState(false);
 
   // when you click a row
   const handleRowClick = (r: FlightRequest) => {
@@ -85,6 +88,10 @@ export const RequestsDataTable: React.FC<Props> = ({ data, columns }) => {
           /* error toast already shown */
         }
       }
+  
+  function triggerView(){
+    setShowView(true);
+  }
     
 
   return (
@@ -169,7 +176,9 @@ export const RequestsDataTable: React.FC<Props> = ({ data, columns }) => {
                   )}
                 </dl>
               </div>
-
+              <Button onClick={triggerView} className="flex-1 mt-4">
+                See in map
+              </Button>
               <SheetFooter className="flex gap-2 w-full mt-4">
                 <Button onClick={onApprove} className="flex-1">
                   Approve
@@ -210,6 +219,7 @@ export const RequestsDataTable: React.FC<Props> = ({ data, columns }) => {
           )}
         </SheetContent>
       </Sheet>
+      {showView && <RequestMapView showView={showView} setShowView={setShowView} points={rowReq?.waypoints}/>}
     </>
   )
 }
