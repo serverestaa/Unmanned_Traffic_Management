@@ -1,6 +1,6 @@
 # app/monitoring/router.py
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc, func, delete, text
 from datetime import datetime, timedelta
@@ -743,7 +743,7 @@ async def process_telemetry_data(
 
 @router.get("/zone/drones", response_model=List[ZoneDroneCount])
 async def get_zone_drones(
-    zone_h3_indices: List[str],
+    zones: str = Query(..., description="Comma-separated list of H3 indices"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -751,10 +751,13 @@ async def get_zone_drones(
     Get drones in specified H3 zones with optimized spatial querying.
     Uses both H3 indices and spatial indexes for maximum performance.
     """
+    # Split the comma-separated zones into a list
+    zone_list = zones.split(',')
+    
     # First get the hex cells for the given H3 indices
     hex_cells = await db.execute(
         select(HexGridCell)
-        .where(HexGridCell.h3_index.in_(zone_h3_indices))
+        .where(HexGridCell.h3_index.in_(zone_list))
     )
     hex_cells = hex_cells.scalars().all()
     
@@ -766,7 +769,21 @@ async def get_zone_drones(
         select(
             HexGridCell,
             func.count(CurrentDronePosition.id).label('drone_count'),
-            func.array_agg(CurrentDronePosition).label('drones')
+            func.json_agg(
+                func.json_build_object(
+                    'id', CurrentDronePosition.id,
+                    'drone_id', CurrentDronePosition.drone_id,
+                    'flight_request_id', CurrentDronePosition.flight_request_id,
+                    'latitude', CurrentDronePosition.latitude,
+                    'longitude', CurrentDronePosition.longitude,
+                    'altitude', CurrentDronePosition.altitude,
+                    'speed', CurrentDronePosition.speed,
+                    'heading', CurrentDronePosition.heading,
+                    'battery_level', CurrentDronePosition.battery_level,
+                    'status', CurrentDronePosition.status,
+                    'last_update', CurrentDronePosition.last_update
+                )
+            ).label('drones')
         )
         .join(CurrentDronePosition, CurrentDronePosition.hex_cell_id == HexGridCell.id)
         .where(HexGridCell.id.in_([cell.id for cell in hex_cells]))
